@@ -1,3 +1,7 @@
+/*
+  テーマ配色
+*/
+
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
