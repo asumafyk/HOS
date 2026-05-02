@@ -8,6 +8,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:my_first_app/service/storage_service.dart';
 import 'package:my_first_app/ui/dialogs/folder_dialogs.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -176,9 +177,9 @@ class _MusicScannerState extends State<MusicScanner> {
     さまざまな設定をスマホに保存する関数
   */
   Future<void> _saveAllSettings() async {
-    final prefs = await SharedPreferences.getInstance();
     // 現在の folderMap から仮想フォルダの「パス一覧」を抽出
     Map<String, List<String>> newVirtualPaths = {};
+
     folderMap.forEach((key, songs) {
       if (key.startsWith("VIRTUAL_")) {
         newVirtualPaths[key] = songs.map((s) => s.data).toList();
@@ -189,27 +190,25 @@ class _MusicScannerState extends State<MusicScanner> {
       virtualFolderPaths = newVirtualPaths;
     });
 
-    // 曲のリストを保存
-    await prefs.setStringList("favorite_songs", favoriteSongs.toList());
-    // フォルダのリストも保存
-    await prefs.setStringList("favorite_folders", favoriteFolders.toList());
-    // 跨ぎのON/OFFを保存
-    await prefs.setBool("is_folder_bridge_enabled", isFolderBridgeEnabled);
-    // シーケンスの保存(フォルダ跨ぎの)
-    await prefs.setStringList("folder_sequence", folderSequence);
-    // 上位フォルダの地図を保存
-    String parentFoldersJson = jsonEncode(parentFolderMap);
-    await prefs.setString("parent_folder_map", parentFoldersJson);
-    // 上位フォルダの並び順を保存
-    await prefs.setStringList("parent_folder_order", parentFolderOrder);
-    // フォルダのニックネームMapをJSON形式で保存
-    await prefs.setString("folder_nicknames", jsonEncode(folderNicknames));
-    // 曲ファイルのニックネームMapをJSON形式で保存
-    await prefs.setString("song_nicknames", jsonEncode(songNicknames));
-    // 仮想フォルダのパス一覧を保存
-    await prefs.setString(
-      "virtual_folder_paths",
-      jsonEncode(virtualFolderPaths),
+    await StorageService.saveAll(
+      // 曲のリストを保存
+      favoriteSongs: favoriteSongs,
+      // フォルダのリストも保存
+      favoriteFolders: favoriteFolders,
+      // 跨ぎのON/OFFを保存
+      isFolderBridgeEnabled: isFolderBridgeEnabled,
+      // シーケンスの保存(フォルダ跨ぎの)
+      folderSequence: folderSequence,
+      // 上位フォルダの地図を保存
+      parentFolderMap: parentFolderMap,
+      // 上位フォルダの並び順を保存
+      parentFolderOrder: parentFolderOrder,
+      // フォルダのニックネームMapをJSON形式で保存
+      folderNicknames: folderNicknames,
+      // 曲ファイルのニックネームMapをJSON形式で保存
+      songNicknames: songNicknames,
+      // 仮想フォルダのパス一覧を保存
+      virtualFolderPaths: newVirtualPaths,
     );
   }
 
@@ -217,73 +216,36 @@ class _MusicScannerState extends State<MusicScanner> {
     保存されたさまざまな設定を読み込む関数
   */
   Future<void> _loadAllSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    // お気に入り曲の読み込み
-    final savedSongs = prefs.getStringList('favorite_songs');
-    // お気に入りフォルダの読み込み
-    final savedFolders = prefs.getStringList('favorite_folders');
-    // 跨ぎのON/OFFを読み込み
-    final bool bridgeEnabled =
-        prefs.getBool("is_folder_bridge_enabled") ?? false;
-    // シーケンスの読み込み(フォルダ跨ぎの)
-    final savedSequence = prefs.getStringList("folder_sequence") ?? [];
-    // 上位フォルダ地図 (parentFolderMap) の復元
-    Map<String, List<String>> loadedMap = {};
-    String? jsonStr = prefs.getString("parent_folder_map");
-    // フォルダのニックネームMapの復元
-    String? folderNickStr = prefs.getString("folder_nicknames");
-    // 曲ファイルのニックネームMapの復元
-    String? songNickStr = prefs.getString("song_nicknames");
-    // 仮想フォルダのパス一覧を復元
-    String? vPathStr = prefs.getString("virtual_folder_paths");
-    if (vPathStr != null) {
-      setState(() {
-        Map<String, dynamic> decode = jsonDecode(vPathStr);
-        virtualFolderPaths = decode.map(
-          (k, v) => MapEntry(k, List<String>.from(v as Iterable)),
-        );
-      });
-    }
+    final data = await StorageService.loadAll();
 
-    if (jsonStr != null) {
-      try {
-        Map<String, dynamic> decoded = jsonDecode(jsonStr);
-        loadedMap = decoded.map(
-          (key, value) => MapEntry(key, List<String>.from(value as Iterable)),
-        );
-      } catch (e) {
-        debugPrint("JSON Decode Error: $e");
-      }
-    }
-
-    // 初回起動時などでデータが空、またはAll Songsがない場合の初期化
-    if (loadedMap.isEmpty || !loadedMap.containsKey("All Songs")) {
-      loadedMap = {"All Songs": [], "好きな曲の入ったフォルダをまとめよう！": []};
-    }
-
-    // 非同期処理(await)が終わった後、setStateを呼ぶ前に必ずチェック
     if (!mounted) return;
 
-    // まとめてState（画面）に反映
     setState(() {
-      parentFolderMap = loadedMap;
-
-      if (savedSongs != null) {
-        favoriteSongs = savedSongs.toSet();
-      }
-      if (savedFolders != null) {
-        favoriteFolders = savedFolders.toSet();
-      }
-      isFolderBridgeEnabled = bridgeEnabled;
-      folderSequence = savedSequence;
+      // お気に入り曲の読み込み
+      favoriteSongs = data['favoriteSongs'];
+      // お気に入りフォルダの読み込み
+      favoriteFolders = data['favoriteFolders'];
+      // 跨ぎのON/OFFを読み込み
+      isFolderBridgeEnabled = data['isFolderBridgeEnabled'];
+      // シーケンスの読み込み(フォルダ跨ぎの)
+      folderSequence = data['folderSequence'];
+      // 上位フォルダ地図 (parentFolderMap) の復元
+      parentFolderMap = data['parentFolderMap'];
       // 上位フォルダの並び順を読み込み
-      parentFolderOrder = prefs.getStringList("parent_folder_order") ?? [];
-      if (folderNickStr != null) {
-        folderNicknames = Map<String, String>.from(jsonDecode(folderNickStr));
+      parentFolderOrder = data['parentFolderOrder'];
+      // フォルダのニックネームMapの復元
+      folderNicknames = data['folderNicknames'];
+      // 曲ファイルのニックネームMapの復元
+      songNicknames = data['songNicknames'];
+      // 仮想フォルダのパス一覧を復元
+      virtualFolderPaths = data['virtualFolderPaths'];
+
+      // 初回起動時などでデータが空、またはAll Songsがない場合の初期化
+      if (parentFolderMap.isEmpty ||
+          !parentFolderMap.containsKey("All Songs")) {
+        parentFolderMap = {"All Songs": [], "好きな曲の入ったフォルダをまとめよう！": []};
       }
-      if (songNickStr != null) {
-        songNicknames = Map<String, String>.from(jsonDecode(songNickStr));
-      }
+
       // Mapにあるのにリストにないフォルダ（新規追加分など）を補充
       for (var key in parentFolderMap.keys) {
         if (!parentFolderOrder.contains(key)) parentFolderOrder.add(key);
@@ -291,7 +253,6 @@ class _MusicScannerState extends State<MusicScanner> {
       // 削除されたフォルダをリストから掃除
       parentFolderOrder.retainWhere((key) => parentFolderMap.containsKey(key));
     });
-
     debugPrint("--- All Settings Loaded Successfully ---");
   }
 
