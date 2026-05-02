@@ -1,7 +1,6 @@
 /*
   メイン画面
 */
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
@@ -17,6 +16,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:my_first_app/core/constants.dart';
 import 'package:my_first_app/ui/theme/app_theme.dart';
 import '../dialogs/folder_dialogs.dart';
+import '../../service/audio_player_service.dart';
 
 // 定数や設定だけを書く場所「看板(Widget)」
 class MusicScanner extends StatefulWidget {
@@ -35,7 +35,7 @@ class MusicScanner extends StatefulWidget {
 // ずっと保持したい道具はこちら「楽屋(State)」
 class _MusicScannerState extends State<MusicScanner> {
   //音楽を再生するためのメイン道具
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  final AudioPlayerService _audioService = AudioPlayerService();
 
   // 上位フォルダ -> その中に入るフォルダ名のリスト
   Map<String, List<String>> parentFolderMap = {
@@ -111,9 +111,6 @@ class _MusicScannerState extends State<MusicScanner> {
   Set<String> favoriteSongs = {};
   // お気に入りフォルダ名を保存する箱
   Set<String> favoriteFolders = {};
-
-  // 連続スキップ用のタイマー
-  Timer? _continuousSkipTimer;
 
   // "play" (再生中), "pause" (一時停止), "stop" (停止)
   String status = "stop";
@@ -2562,21 +2559,9 @@ class _MusicScannerState extends State<MusicScanner> {
     連続スキップ用の関数
   */
   void _startContinuousSkip(bool isNext) {
-    // 既にタイマーが動いていたら一度止めるための（安全策）
-    _stopContinuousSkip();
-
-    // 1回目は即実行（タップ）
-    isNext ? playNextSong() : playPreviousSong();
-
-    // 2回目以降、一定間隔で実行
-    _continuousSkipTimer = Timer.periodic(const Duration(milliseconds: 300), (
-      timer,
-    ) {
-      if (isNext) {
-        playNextSong();
-      } else {
-        playPreviousSong();
-      }
+    // 第2引数には「定期的に実行したい処理」を渡す
+    _audioService.startContinuousSkip(isNext, () {
+      isNext ? playNextSong() : playPreviousSong();
     });
   }
 
@@ -2595,9 +2580,9 @@ class _MusicScannerState extends State<MusicScanner> {
         // 指が触れた瞬間（長押しの判定開始）
         onLongPress: () => onLongPressStart(true),
         // 指が離れた時
-        onTapUp: (_) => _stopContinuousSkip(),
+        onTapUp: (_) => _audioService.stopContinuousSkip(),
         // 画面外に指がズレてキャンセルされた時
-        onTapCancel: () => _stopContinuousSkip(),
+        onTapCancel: () => _audioService.stopContinuousSkip(),
         borderRadius: BorderRadius.circular(50),
         child: Padding(
           padding: const EdgeInsets.all(8.0),
@@ -2607,21 +2592,13 @@ class _MusicScannerState extends State<MusicScanner> {
     );
   }
 
-  /*
-    連続スキップを止める関数
-  */
-  void _stopContinuousSkip() {
-    _continuousSkipTimer?.cancel();
-    _continuousSkipTimer = null;
-  }
-
   /* 
     次の曲を再生する関数
   */
   void playNextSong({bool isAutomatic = false}) {
     // 1曲リピートのみの自動遷移時のみ
     if (isAutomatic && playMode == 2 && selectSong != null) {
-      _audioPlayer.play(DeviceFileSource(selectSong!.data));
+      _audioService.play(selectSong!.data);
       return;
     }
     // 次を再生する
@@ -2646,7 +2623,7 @@ class _MusicScannerState extends State<MusicScanner> {
         status = "play";
         // フォルダを跨いだ場合、playlistSongsは_getTargetSong内で更新済み
       });
-      _audioPlayer.play(DeviceFileSource(target.data));
+      _audioService.play(target.data);
       // 曲が切り替わった（＝フォルダが変わった可能性がある）時だけ
       // ダイアログが開いていれば描き直させる
       if (dialogUpdater != null) {
@@ -2658,7 +2635,7 @@ class _MusicScannerState extends State<MusicScanner> {
       }
     } else {
       //次の曲がない、またはエラー時は停止
-      _audioPlayer.stop();
+      _audioService.stop();
       setState(() => status = "stop");
     }
   }
@@ -2849,7 +2826,7 @@ class _MusicScannerState extends State<MusicScanner> {
           ),
           TextButton(
             onPressed: () {
-              _audioPlayer.stop(); // ダイアログを閉じるだけ
+              _audioService.stop(); // ダイアログを閉じるだけ
               SystemNavigator.pop();
             },
             child: const Text(
@@ -2865,20 +2842,20 @@ class _MusicScannerState extends State<MusicScanner> {
   @override // 画面が生まれた瞬間に実行する処理
   void initState() {
     super.initState();
-
     // アプリが立ち上がった瞬間に、設定読み込みと権限チェックから
     _initializeHOS();
 
     // 監視役を登録して、変数に代入しておく
-    _completeSubscription = _audioPlayer.onPlayerComplete.listen((event) {
+    _completeSubscription = _audioService.onPlayerComplete.listen((_) {
       playNextSong(isAutomatic: true); // 自動であることの証明
     });
-    _durationSubscription = _audioPlayer.onDurationChanged.listen((
+    _durationSubscription = _audioService.onDurationChanged.listen((
       newDuration,
     ) {
+      if (!mounted) return; // 画面が消えていたら何もしない
       setState(() => duration = newDuration);
     });
-    _positionSubscription = _audioPlayer.onPositionChanged.listen((
+    _positionSubscription = _audioService.onPositionChanged.listen((
       newPosition,
     ) {
       if (!mounted) return; // 画面が消えていたら何もしない
@@ -3088,7 +3065,7 @@ class _MusicScannerState extends State<MusicScanner> {
                               ),
                               // つまみを動かした時の処理
                               onChanged: (value) async {
-                                await _audioPlayer.seek(
+                                await _audioService.seek(
                                   Duration(seconds: value.toInt()),
                                 ); // 指定した時間にジャンプ
                               },
@@ -3187,7 +3164,7 @@ class _MusicScannerState extends State<MusicScanner> {
                               IconButton(
                                 onPressed: () async {
                                   if (status == "play") {
-                                    await _audioPlayer.pause(); // 再生中なら一時停止
+                                    await _audioService.pause(); // 再生中なら一時停止
                                     setState(() => status = "pause"); // 状態を停止中に
                                   } else {
                                     // 再生中でない場合
@@ -3205,7 +3182,7 @@ class _MusicScannerState extends State<MusicScanner> {
                                     } else if (selectSong != null) {
                                       if (status == "pause") {
                                         // 一時停止からの再開
-                                        await _audioPlayer.resume();
+                                        await _audioService.resume();
                                       } else {
                                         // 停止状態または未選択から新規再生
                                         _executePlay(selectSong);
@@ -3308,18 +3285,13 @@ class _MusicScannerState extends State<MusicScanner> {
 
   @override // 画面が消える時の後片付け
   void dispose() {
-    // タイマーが裏で暴走しないように
-    _stopContinuousSkip();
-
+    _audioService.dispose(); // アプリ終了時に呼び出す
     // 耳(listen)を閉じる
     _completeSubscription.cancel();
     _durationSubscription.cancel();
     _positionSubscription.cancel();
-
-    _audioPlayer.dispose(); // アプリ終了時にプレイヤーを解体してメモリを解放する
-
+    
     dialogUpdater = null;
-
     super.dispose();
   }
 }
