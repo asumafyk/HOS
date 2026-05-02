@@ -8,12 +8,14 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:my_first_app/ui/dialogs/folder_dialogs.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 // 自前ファイル
 import 'package:my_first_app/core/constants.dart';
 import 'package:my_first_app/ui/theme/app_theme.dart';
+import '../dialogs/folder_dialogs.dart';
 
 // 定数や設定だけを書く場所「看板(Widget)」
 class MusicScanner extends StatefulWidget {
@@ -1081,14 +1083,14 @@ class _MusicScannerState extends State<MusicScanner> {
               if (inputName.isEmpty) {
                 // 入力欄をすべて消去
                 controller.clear();
-                _showEmptyError("フォルダ名を入力してください");
+                FolderDialogs.showEmptyError(context);
                 return;
               }
               if (inputName.isNotEmpty) {
                 // 重複チェック回路
                 if (parentFolderMap.containsKey(inputName)) {
                   // 既に同じ名前が存在する場合：警告を出して作成させない
-                  _showDuplicateWarning(inputName);
+                  FolderDialogs.showDuplicateWarning(context, inputName);
                   // 入力欄の入力された文字をすべて「選択状態」にする
                   controller.selection = TextSelection(
                     baseOffset: 0,
@@ -1107,58 +1109,6 @@ class _MusicScannerState extends State<MusicScanner> {
               }
             },
             child: const Text("作成"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /*
-    名前が空文字の際の警告用関数
-  */
-  void _showEmptyError(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme(context).exitBackground,
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.amber),
-            SizedBox(width: 8),
-            Text("名前が空白"),
-          ],
-        ),
-        content: Text("名前が空白です。\n名前を入力してください。"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("了解"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /*
-    名前が重複時の警告用サブ・ダイアログ
-  */
-  void _showDuplicateWarning(String name) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme(context).exitBackground,
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.amber),
-            SizedBox(width: 8),
-            Text("名前の重複"),
-          ],
-        ),
-        content: Text("「$name」は既に使われています。\n別の名前を入力してください。"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("了解"),
           ),
         ],
       ),
@@ -1193,7 +1143,7 @@ class _MusicScannerState extends State<MusicScanner> {
               // 0文字チェック
               if (newName.isEmpty) {
                 controller.clear(); // 空文字しかない場合は入力欄を消去
-                _showEmptyError("名前を空にはできません");
+                FolderDialogs.showEmptyError(context);
                 return;
               }
               // 何も変わって何ならそのまま閉じる
@@ -1204,7 +1154,7 @@ class _MusicScannerState extends State<MusicScanner> {
               if (newName.isNotEmpty) {
                 // 重複チェック
                 if (parentFolderMap.containsKey(newName)) {
-                  _showDuplicateWarning(newName);
+                  FolderDialogs.showDuplicateWarning(context, newName);
                   // 入力欄の入力された文字をすべて「選択状態」にする
                   controller.selection = TextSelection(
                     baseOffset: 0,
@@ -1240,75 +1190,19 @@ class _MusicScannerState extends State<MusicScanner> {
      上位フォルダを削除するときの安全バー(加えて、実際の削除を担当する)関数
   */
   void _confirmDeleteParentFolder(String name) {
-    List<String> contents = parentFolderMap[name] ?? [];
-    int count = contents.length;
-    String folderPreview = "";
-
-    if (count > 0) {
-      // 最大文字数を設定
-      const int maxChars = 12;
-      // 各フォルダをスキャンし、長すぎる場合は切り詰める
-      final truncatedNames = contents
-          .take(2)
-          .map((id) {
-            // ニックネームへの変換
-            String rawName = folderNicknames[id] ?? id;
-            if (rawName.startsWith("VIRTUAL_")) rawName = "名称未設定フォルダ";
-            // 指定文字数より長ければカット
-            String displayName = (rawName.length > maxChars)
-                ? "${rawName.substring(0, maxChars)}…"
-                : rawName;
-            return "「$displayName」";
-          })
-          .join("・");
-      // 記述内容
-      folderPreview =
-          "\n$truncatedNames${count > 2 ? " などのフォルダ" : ""} が含まれています)";
-    }
-
-    showDialog(
+    FolderDialogs.confirmDelete(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme(context).exitBackground,
-        title: Text("「$name」を削除しますか？", style: const TextStyle(fontSize: 17)),
-        content: Text(
-          "1件を削除します。$folderPreview",
-          style: const TextStyle(fontSize: 14),
-        ),
-        actionsAlignment: MainAxisAlignment.end,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("キャンセル"),
-          ),
-          // 削除して続ける
-          TextButton(
-            onPressed: () {
-              setState(() {
-                parentFolderMap.remove(name);
-                parentFolderOrder.remove(name);
-              });
-              _saveAllSettings();
-              Navigator.pop(context);
-            },
-            child: const Text("削除して続ける"),
-          ),
-          // 削除して終了
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () {
-              setState(() {
-                parentFolderMap.remove(name);
-                parentFolderOrder.remove(name);
-                isDeleteMode = false;
-              });
-              _saveAllSettings();
-              Navigator.pop(context);
-            },
-            child: const Text("削除して終了", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+      name: name,
+      parentFolderMap: parentFolderMap,
+      folderNicknames: folderNicknames,
+      onConfirm: () {
+        setState(() {
+          parentFolderMap.remove(name);
+          parentFolderOrder.remove(name);
+          isDeleteMode = false;
+        });
+        _saveAllSettings();
+      },
     );
   }
 
@@ -1649,7 +1543,7 @@ class _MusicScannerState extends State<MusicScanner> {
               // 空文字チェック
               if (name.isEmpty) {
                 controller.clear();
-                _showEmptyError("名前を入力してください");
+                FolderDialogs.showEmptyError(context);
                 return;
               }
               // 重複チェック
@@ -1657,7 +1551,7 @@ class _MusicScannerState extends State<MusicScanner> {
                 (k) => (folderNicknames[k] ?? k) == name,
               );
               if (isDuplicate) {
-                _showDuplicateWarning(name);
+                FolderDialogs.showDuplicateWarning(context, name);
                 return;
               }
 
@@ -1817,7 +1711,7 @@ class _MusicScannerState extends State<MusicScanner> {
               // 名前が空の場合
               if (newName.isEmpty) {
                 controller.clear();
-                _showEmptyError("名前を入力してください");
+                FolderDialogs.showEmptyError(context);
                 return;
               }
               // 重複チェック
@@ -1825,7 +1719,7 @@ class _MusicScannerState extends State<MusicScanner> {
                 (k) => k != id && (folderNicknames[k] ?? k) == newName,
               );
               if (isDuplicate) {
-                _showDuplicateWarning(newName);
+                FolderDialogs.showDuplicateWarning(context, newName);
                 return;
               }
 
