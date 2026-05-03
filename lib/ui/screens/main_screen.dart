@@ -2,20 +2,16 @@
   メイン画面
 */
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:my_first_app/service/storage_service.dart';
 import 'package:my_first_app/ui/dialogs/folder_dialogs.dart';
 import 'package:on_audio_query/on_audio_query.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 // 自前ファイル
 import 'package:my_first_app/core/constants.dart';
 import 'package:my_first_app/ui/theme/app_theme.dart';
-import '../dialogs/folder_dialogs.dart';
 import '../../service/audio_player_service.dart';
 import '../widgets/music_tile.dart';
 import '../../core/utils.dart'; // 時間変換など
@@ -1066,7 +1062,9 @@ class _MusicScannerState extends State<MusicScanner> {
     All Songs フォルダ用の関数（全フォルダ表示 ＆ 複数選択・仕分け）
   */
   Widget _buildAllSongsManager() {
-    List<String> folders = folderMap.keys.toList();
+    List<String> physicalFolders = folderMap.keys
+        .where((key) => !key.startsWith("VIRTUAL_") && key != "All Songs")
+        .toList();
 
     return Column(
       children: [
@@ -1121,7 +1119,7 @@ class _MusicScannerState extends State<MusicScanner> {
                 // 並び順を保持するなら physicalFolderOrder 等の別リストが必要です
               });
             },
-            children: folders.asMap().entries.map((entry) {
+            children: physicalFolders.asMap().entries.map((entry) {
               int index = entry.key;
               String folderName = entry.value;
 
@@ -1539,8 +1537,8 @@ class _MusicScannerState extends State<MusicScanner> {
   /*
     まとめから特定のフォルダを外す際の確認用関数
   */
-  void _confirmRemoveFromSummary(String id) {
-    String displayName = folderNicknames[id] ?? id;
+  void _confirmRemoveFromSummary(String folderId) {
+    String displayName = folderNicknames[folderId] ?? folderId;
     if (displayName.startsWith("VIRTUAL_")) displayName = "(名称未設定)";
 
     showDialog(
@@ -1557,7 +1555,14 @@ class _MusicScannerState extends State<MusicScanner> {
           TextButton(
             onPressed: () {
               setState(() {
-                parentFolderMap[currentParentName]?.remove(id);
+                // まとめリストからの削除
+                parentFolderMap[currentParentName]?.remove(folderId);
+                // 仮想フォルダなら、根元データからも削除する
+                if (folderId.startsWith("VIRTUAL_")) {
+                  virtualFolderPaths.remove(folderId);
+                  folderNicknames.remove(folderId);
+                  folderMap.remove(folderId);
+                }
               });
               _saveAllSettings();
               Navigator.pop(context);
@@ -1570,7 +1575,7 @@ class _MusicScannerState extends State<MusicScanner> {
           TextButton(
             onPressed: () {
               setState(() {
-                parentFolderMap[currentParentName]?.remove(id);
+                parentFolderMap[currentParentName]?.remove(folderId);
                 _resetModes();
               });
               _saveAllSettings();
@@ -1734,7 +1739,7 @@ class _MusicScannerState extends State<MusicScanner> {
                 isSelected: isSelected,
                 displayName: displayName,
                 isSelectionMode: isSelectionMode,
-                isSortMode: isSelected,
+                isSortMode: isSortMode,
                 isRenameMode: isRenameMode,
                 isDeleteMode: isDeleteMode,
                 isFavorite: favoriteSongs.contains(song.data),
@@ -2439,43 +2444,6 @@ class _MusicScannerState extends State<MusicScanner> {
     return playlistSongs[targetIndex];
   }
 
-  /*
-    連続スキップ用の関数
-  */
-  void _startContinuousSkip(bool isNext) {
-    // 第2引数には「定期的に実行したい処理」を渡す
-    _audioService.startContinuousSkip(isNext, () {
-      isNext ? playNextSong() : playPreviousSong();
-    });
-  }
-
-  /* 
-    操作パネル内のボタン用共通ウィジェット（波紋＋長押し）
-  */
-  Widget _buildTransportButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    required Function(bool) onLongPressStart,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        // 指が触れた瞬間（長押しの判定開始）
-        onLongPress: () => onLongPressStart(true),
-        // 指が離れた時
-        onTapUp: (_) => _audioService.stopContinuousSkip(),
-        // 画面外に指がズレてキャンセルされた時
-        onTapCancel: () => _audioService.stopContinuousSkip(),
-        borderRadius: BorderRadius.circular(50),
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Icon(icon, size: 40, color: AppTheme(context).playerIcon),
-        ),
-      ),
-    );
-  }
-
   /* 
     次の曲を再生する関数
   */
@@ -2868,7 +2836,16 @@ class _MusicScannerState extends State<MusicScanner> {
                 onPlayPausePressed: _handlePlayPause,
                 onNextPressed: () => playNextSong(isAutomatic: false),
                 onPreviousPressed: playPreviousSong,
-                onContinuousSkipStart: (isNext) => _startContinuousSkip(isNext),
+                onContinuousSkipStart: (isNext) {
+                  _audioService.startContinuousSkip(isNext, () {
+                    if (isNext) {
+                      playNextSong(isAutomatic: false);
+                    } else {
+                      playPreviousSong();
+                    }
+                  });
+                },
+                onContinuousSkipStop: _audioService.stopContinuousSkip,
                 onSeek: (val) =>
                     _audioService.seek(Duration(seconds: val.toInt())),
                 onModeToggle: () =>

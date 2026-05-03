@@ -58,10 +58,10 @@ class MusicTile extends StatelessWidget {
     // サブタイトルの決定（曲ならアーティスト名,まとめフォルダ内なら中の曲数）
     Widget? subTitle;
     if (level == ViewLevel.sub) {
-      /*subTitle = Text(
+      subTitle = Text(
         "(${folderMap[id]?.length ?? 0})",
         style: TextStyle(color: theme.songCount, fontSize: 12),
-      );*/
+      );
     } else if (level == ViewLevel.song) {
       subTitle = Text(
         song?.artist ?? "不明なアーティスト",

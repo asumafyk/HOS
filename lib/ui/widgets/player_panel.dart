@@ -24,6 +24,7 @@ class PlayerPanel extends StatelessWidget {
   final VoidCallback onNextPressed;
   final VoidCallback onPreviousPressed;
   final Function(bool) onContinuousSkipStart;
+  final VoidCallback onContinuousSkipStop;
   final Function(double) onSeek;
   final VoidCallback onModeToggle;
   final VoidCallback onBridgeToggle;
@@ -43,6 +44,7 @@ class PlayerPanel extends StatelessWidget {
     required this.onNextPressed,
     required this.onPreviousPressed,
     required this.onContinuousSkipStart,
+    required this.onContinuousSkipStop,
     required this.onSeek,
     required this.onModeToggle,
     required this.onBridgeToggle,
@@ -269,6 +271,7 @@ class PlayerPanel extends StatelessWidget {
           Icons.skip_previous,
           onPreviousPressed,
           () => onContinuousSkipStart(false),
+          onContinuousSkipStop,
           theme,
         ),
 
@@ -294,6 +297,7 @@ class PlayerPanel extends StatelessWidget {
           Icons.skip_next,
           onNextPressed,
           () => onContinuousSkipStart(true),
+          onContinuousSkipStop,
           theme,
         ),
 
@@ -316,11 +320,14 @@ class PlayerPanel extends StatelessWidget {
     IconData icon,
     VoidCallback tap,
     VoidCallback longPress,
+    VoidCallback longPressEnd,
     AppTheme theme,
   ) {
     return InkWell(
       onTap: tap,
-      onLongPress: longPress,
+      onLongPress: longPress, // 長押し
+      onTapUp: (_) => longPressEnd(), // 指を離したとき
+      onTapCancel: () => longPressEnd(), // スライドして外れたとき
       borderRadius: BorderRadius.circular(50),
       child: Padding(
         padding: const EdgeInsets.all(8.0),

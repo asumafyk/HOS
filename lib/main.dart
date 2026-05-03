@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
-import 'ui/theme/app_theme.dart';
 import 'ui/screens/main_screen.dart';
 
 void main() async {
