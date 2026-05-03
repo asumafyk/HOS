@@ -6,9 +6,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class FolderDialogs {
-  /*
-    名前が空文字の際の警告用関数
-  */
+  // 名前が空文字の際の警告用関数
   static void showEmptyError(BuildContext context) {
     showDialog(
       context: context,
@@ -32,9 +30,7 @@ class FolderDialogs {
     );
   }
 
-  /*
-    名前が重複時の警告用サブ・ダイアログ
-  */
+  // 名前が重複時の警告用サブ・ダイアログ
   static void showDuplicateWarning(BuildContext context, String name) {
     showDialog(
       context: context,
@@ -58,9 +54,7 @@ class FolderDialogs {
     );
   }
 
-  /*
-     削除するときの安全バー(加えて、実際の削除を担当する)関数
-  */
+  // 削除するときの安全バー(加えて、実際の削除を担当する)関数
   static void confirmDelete({
     required BuildContext context,
     required String name,
@@ -116,6 +110,34 @@ class FolderDialogs {
               onConfirm();
             },
             child: const Text("削除する", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 一括削除時の確認
+  static void showBatchDeleteConfirm({
+    required BuildContext context,
+    required int count,
+    required VoidCallback onConfirm,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("一括削除の確認"),
+        content: Text("選択された $count 個のアイテムを削除/除外しますか？"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("キャンセル"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              onConfirm();
+            },
+            child: const Text("削除", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),

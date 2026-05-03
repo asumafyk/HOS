@@ -13,8 +13,9 @@ class MusicTile extends StatelessWidget {
   final String id;
   final int index;
   final SongModel? song;
-  final bool isSelected;
   final bool isSelectionMode;
+  final bool isPlaying; // 背景の青い光用
+  final bool isChecked; // チェックボックスのON/OFF用
   final bool isSortMode;
   final bool isRenameMode;
   final bool isDeleteMode;
@@ -35,7 +36,8 @@ class MusicTile extends StatelessWidget {
     required this.id,
     required this.index,
     this.song,
-    required this.isSelected,
+    required this.isPlaying,
+    required this.isChecked,
     required this.isSelectionMode,
     required this.isSortMode,
     required this.isRenameMode,
@@ -58,10 +60,11 @@ class MusicTile extends StatelessWidget {
     // サブタイトルの決定（曲ならアーティスト名,まとめフォルダ内なら中の曲数）
     Widget? subTitle;
     if (level == ViewLevel.sub) {
-      subTitle = Text(
+      // TODO
+      /*subTitle = Text(
         "(${folderMap[id]?.length ?? 0})",
         style: TextStyle(color: theme.songCount, fontSize: 12),
-      );
+      );*/
     } else if (level == ViewLevel.song) {
       subTitle = Text(
         song?.artist ?? "不明なアーティスト",
@@ -77,7 +80,7 @@ class MusicTile extends StatelessWidget {
         onTap: onTap,
         child: Ink(
           decoration: BoxDecoration(
-            gradient: isSelected
+            gradient: isPlaying
                 ? LinearGradient(
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
@@ -85,7 +88,7 @@ class MusicTile extends StatelessWidget {
                     stops: const [0.0, 0.4, 1.0],
                   )
                 : null,
-            color: isSelected ? null : theme.listBackground,
+            color: null,
             border: Border(
               bottom: BorderSide(
                 color: AppTheme(context).listBorder,
@@ -101,9 +104,9 @@ class MusicTile extends StatelessWidget {
             // 左側
             leading: (isSelectionMode)
                 ? Checkbox(
-                    value: isFavorite, // チェック状態は呼び出し側から受け取る
+                    value: isChecked, // チェック状態は呼び出し側から受け取る
                     activeColor: Colors.blueAccent,
-                    onChanged: onCheckboxChanged,
+                    onChanged: (val) => onCheckboxChanged(val),
                   )
                 : _buildLeadingIcon(theme),
             // 中央タイトル
@@ -112,7 +115,7 @@ class MusicTile extends StatelessWidget {
               maxLines: level == ViewLevel.parent ? 2 : 1, // 親なら2行、それ以外は1行
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: isSelected ? theme.playingText : theme.listText,
+                color: isPlaying ? theme.playingText : theme.listText,
                 fontWeight: FontWeight.bold,
                 fontSize: 15,
               ),
@@ -138,7 +141,7 @@ class MusicTile extends StatelessWidget {
         child: Text(
           "${index + 1}.",
           style: TextStyle(
-            color: isSelected ? theme.playingText : theme.listText,
+            color: isPlaying ? theme.playingText : theme.listText,
             fontWeight: FontWeight.bold,
             fontFamily: "monospace",
           ),
@@ -147,11 +150,9 @@ class MusicTile extends StatelessWidget {
     }
     // フォルダ階層（親・物理）の場合はアイコンを表示
     IconData icon = (id == "⭐ お気に入り") ? Icons.star_sharp : Icons.folder;
-    Color color = isSelected
-        ? theme.playingText
-        : (id == "⭐ お気に入り"
-              ? Colors.yellow
-              : Colors.amber.withValues(alpha: 0.8));
+    Color color = (id == "⭐ お気に入り"
+        ? Colors.yellow
+        : Colors.amber.withValues(alpha: 0.8));
     return Icon(icon, color: color, size: 35);
   }
 
@@ -177,17 +178,16 @@ class MusicTile extends StatelessWidget {
         onPressed: onRenameTap,
       );
     }
-    // 削除・除外モード
-    if (isDeleteMode) {
-      IconData delIcon = (level == ViewLevel.parent)
-          ? Icons.delete
-          : Icons.playlist_remove;
-      Color delColor = (level == ViewLevel.parent)
-          ? Colors.redAccent
-          : Colors.orangeAccent;
+    // 通常時かつフォルダ階層でのピン（お気に入り）ボタン
+    if (level == ViewLevel.sub) {
       return IconButton(
-        icon: Icon(delIcon, color: delColor),
-        onPressed: onDeleteTap,
+        visualDensity: VisualDensity.compact,
+        icon: Icon(
+          isFavorite ? Icons.push_pin : Icons.push_pin_outlined,
+          color: isFavorite ? Colors.blueAccent : Colors.white24,
+          size: 25,
+        ),
+        onPressed: onFavoriteTap,
       );
     }
     // 通常時かつ曲階層でのお気に入りボタン

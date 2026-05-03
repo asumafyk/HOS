@@ -6,7 +6,6 @@
 
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:on_audio_query/on_audio_query.dart';
 
 class AudioPlayerService {
   final AudioPlayer _player = AudioPlayer();
