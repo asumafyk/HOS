@@ -18,6 +18,8 @@ import 'package:my_first_app/ui/theme/app_theme.dart';
 import '../dialogs/folder_dialogs.dart';
 import '../../service/audio_player_service.dart';
 import '../widgets/music_tile.dart';
+import '../../core/utils.dart'; // 時間変換など
+import '../widgets/player_panel.dart'; // 再生パネル
 
 // 定数や設定だけを書く場所「看板(Widget)」
 class MusicScanner extends StatefulWidget {
@@ -252,24 +254,6 @@ class _MusicScannerState extends State<MusicScanner> {
       parentFolderOrder.retainWhere((key) => parentFolderMap.containsKey(key));
     });
     debugPrint("--- All Settings Loaded Successfully ---");
-  }
-
-  /*
-    再生モードの文字を返す関数
-  */
-  String _getPlayModeText() {
-    switch (playMode) {
-      case 0:
-        return "順次再生";
-      case 1:
-        return "全曲リピート";
-      case 2:
-        return "1曲リピート";
-      case 3:
-        return "シャッフル";
-      default:
-        return "";
-    }
   }
 
   /*
@@ -659,16 +643,6 @@ class _MusicScannerState extends State<MusicScanner> {
       selectedSongPaths.clear();
       selectedFolders.clear();
     });
-  }
-
-  /*
-    時間を「分：秒」に直す関数
-  */
-  String _formatDuration(Duration d) {
-    // 分と秒を２桁ずつにして合体させる
-    String minutes = d.inMinutes.toString();
-    String seconds = (d.inSeconds % 60).toString().padLeft(2, "0");
-    return "$minutes:$seconds";
   }
 
   /*
@@ -1158,8 +1132,8 @@ class _MusicScannerState extends State<MusicScanner> {
               return MusicTile(
                 key: ValueKey("all_songs_$folderName"),
                 level: ViewLevel.sub, // 階層
-                id: entry.value, // フォルダ名
-                index: entry.key, // 並び順
+                id: folderName, // フォルダ名
+                index: index, // 並び順
                 isSelected: isSelected,
                 displayName: displayName,
                 isSelectionMode: isSelectionMode,
@@ -1610,14 +1584,6 @@ class _MusicScannerState extends State<MusicScanner> {
         ],
       ),
     );
-  }
-
-  /*
-    曲のパスからフォルダ名だけを抜き出す関数
-  */
-  String _getFolderNameFromPath(String path) {
-    List<String> pathParts = path.split("/");
-    return pathParts.length > 1 ? pathParts[pathParts.length - 2] : "不明なフォルダ";
   }
 
   /*
@@ -2559,6 +2525,29 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
+    再生ボタン・一時停止ボタンを押したときの関数
+  */
+  void _handlePlayPause() async {
+    if (status == "play") {
+      await _audioService.pause();
+      setState(() => status = "pause");
+    } else {
+      if (selectSong == null && displayedSongs.isNotEmpty) {
+        setState(() {
+          playlistSongs = List.from(displayedSongs);
+          playingFolderName = currentFolderName;
+        });
+        _executePlay(playlistSongs[0]);
+      } else if (selectSong != null) {
+        status == "pause"
+            ? await _audioService.resume()
+            : _executePlay(selectSong);
+        setState(() => status = "play");
+      }
+    }
+  }
+
+  /*
     サイドメニュー全体のドロワー用の関数
   */
   Widget _buildSystemMenu() {
@@ -2861,318 +2850,35 @@ class _MusicScannerState extends State<MusicScanner> {
         body: SafeArea(
           child: Column(
             children: [
-              // 再生パネル全体を不透明な Container で包む
-              Container(
-                width: double.infinity,
-                color: AppTheme(context).mainBackground,
-                child: Stack(
-                  children: [
-                    // メインの表示・操作エリア
-                    Column(
-                      children: [
-                        Padding(
-                          // 再生中の曲名を表示するテキスト
-                          // ボタンと重ならないよう、上(top)に30の隙間を作りました
-                          padding: const EdgeInsets.only(
-                            top: 18.0,
-                            bottom: 5.0,
-                            left: 60.0,
-                            right: 60.0,
-                          ),
-                          child: Column(
-                            // Columnにして情報を縦に並べる
-                            children: [
-                              SizedBox(
-                                height: 20,
-                                child: Text(
-                                  // statusの状態に合わせて表示を切り替える
-                                  selectSong == null
-                                      ? "～NO DATA～"
-                                      : "📂 ${_getFolderNameFromPath(selectSong!.data)}",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: AppTheme(context).playerFolderText,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-
-                              const SizedBox(height: 6),
-
-                              // 曲名エリア
-                              Container(
-                                height: 70, // 2行分のおおよその高さを指定
-                                alignment: Alignment.center, // 中身を上下左右の中央に配置
-                                child: Text(
-                                  selectSong?.displayNameWOExt ?? "曲を選択してください",
-                                  textAlign: TextAlign.center,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme(context).playerSongsText,
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: 1),
-
-                              // 何曲目かを表示
-                              SizedBox(
-                                height: 20,
-                                child: selectSong != null
-                                    ? Text(
-                                        "(${playlistSongs.indexOf(selectSong!) + 1} / ${playlistSongs.length} 曲目)",
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.blueGrey,
-                                        ),
-                                      )
-                                    : Text(
-                                        "(0 / 0 曲目)",
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.blueGrey,
-                                        ),
-                                      ), // 曲が無いときの処理
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // シークバー
-                        SizedBox(
-                          height: 24,
-                          child: SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              trackHeight: 3.0, // バーの太さ
-                              activeTrackColor: AppTheme(
-                                context,
-                              ).sliderAlreadyplayed, // 再生済みの線の色
-                              inactiveTrackColor: AppTheme(
-                                context,
-                              ).sliderBeforePlay, // 未再生の線の色（暗めの白）
-                              thumbColor: AppTheme(
-                                context,
-                              ).sliderHandle, // つまみの丸の色
-                              overlayColor: Colors.blue.withValues(
-                                alpha: 0.6,
-                              ), // つまみを触った時の影の色
-                              overlayShape: const RoundSliderOverlayShape(
-                                overlayRadius: 12.5,
-                              ), // つまみを触った時の影の半径
-                              thumbShape: const RoundSliderThumbShape(
-                                enabledThumbRadius: 5.5,
-                              ), // つまみの大きさ
-                            ),
-                            child: Slider(
-                              min: 0,
-                              // 最大値を「曲の全秒数」に設定（0以下の場合はエラー回避のため0.0にする）
-                              max: duration.inSeconds.toDouble() > 0
-                                  ? duration.inSeconds.toDouble()
-                                  : 0.0,
-                              // 現在の位置
-                              value: position.inSeconds.toDouble().clamp(
-                                0.0,
-                                duration.inSeconds.toDouble() > 0
-                                    ? duration.inSeconds.toDouble()
-                                    : 0.0,
-                              ),
-                              // つまみを動かした時の処理
-                              onChanged: (value) async {
-                                await _audioService.seek(
-                                  Duration(seconds: value.toInt()),
-                                ); // 指定した時間にジャンプ
-                              },
-                            ),
-                          ),
-                        ),
-
-                        // 時間の数字表示
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.start, // 左側に寄せる
-                            children: [
-                              // 時間表示("0:00"/0:00)
-                              Text(
-                                _formatDuration(position),
-                                style: TextStyle(
-                                  color: AppTheme(context).playerTimeText,
-                                  fontSize: 11,
-                                  fontFamily: "monospace", // 数字の幅を一定にしてがたつきを防ぐ
-                                ),
-                              ),
-                              const SizedBox(width: 2),
-                              Text(
-                                "/",
-                                style: TextStyle(
-                                  color: AppTheme(context).playerTimeText,
-                                  fontSize: 11,
-                                ),
-                              ),
-                              const SizedBox(width: 2),
-                              // 時間表示(0:00/"0:00")
-                              Text(
-                                _formatDuration(duration),
-                                style: TextStyle(
-                                  color: AppTheme(context).playerTimeText,
-                                  fontSize: 11,
-                                  fontFamily: "monospace", // 数字の幅を一定にしてがたつきを防ぐ
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-
-                              // ステータス表示(再生モード・跨ぎON/OFF)
-                              Text(
-                                "(${_getPlayModeText()} / ${isFolderBridgeEnabled ? "フォルダループ:ON" : "フォルダループ:OFF"})",
-                                style: const TextStyle(
-                                  color: Colors.blueGrey,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 5),
-
-                        SizedBox(
-                          height: 50,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center, // 中央寄せ
-                            children: [
-                              // 再生モードを切り替えるボタン
-                              IconButton(
-                                icon: Icon(
-                                  playMode == 0
-                                      ? Icons.trending_flat
-                                      : playMode == 1
-                                      ? Icons.repeat
-                                      : playMode == 2
-                                      ? Icons.repeat_one
-                                      : Icons.shuffle, // playMode=3の時
-                                  color: playMode == 0
-                                      ? AppTheme(context).playerModeOffIcon
-                                      : AppTheme(context).playerModeOnIcon,
-                                ),
-                                onPressed: () => setState(() {
-                                  playMode =
-                                      (playMode + 1) % 4; // 0→1→2→3→0 とループ
-                                }),
-                              ),
-
-                              const SizedBox(width: 20),
-
-                              // 前の曲へのボタン
-                              _buildTransportButton(
-                                icon: Icons.skip_previous,
-                                onTap: playPreviousSong,
-                                onLongPressStart: (_) =>
-                                    _startContinuousSkip(false),
-                              ),
-
-                              const SizedBox(width: 10),
-
-                              // 一時停止・再開ボタン
-                              IconButton(
-                                onPressed: () async {
-                                  if (status == "play") {
-                                    await _audioService.pause(); // 再生中なら一時停止
-                                    setState(() => status = "pause"); // 状態を停止中に
-                                  } else {
-                                    // 再生中でない場合
-                                    // もし曲が選ばれてないなら、リストの１曲目を選択する
-                                    if (selectSong == null &&
-                                        displayedSongs.isNotEmpty) {
-                                      setState(() {
-                                        // 画面のリストを再生用リストとしてコピー
-                                        playlistSongs = List.from(
-                                          displayedSongs,
-                                        );
-                                        playingFolderName = currentFolderName;
-                                      });
-                                      _executePlay(playlistSongs[0]);
-                                    } else if (selectSong != null) {
-                                      if (status == "pause") {
-                                        // 一時停止からの再開
-                                        await _audioService.resume();
-                                      } else {
-                                        // 停止状態または未選択から新規再生
-                                        _executePlay(selectSong);
-                                      }
-                                      setState(() => status = "play");
-                                    }
-                                  }
-                                },
-                                // ボタンの文字を切り替える
-                                icon: Icon(
-                                  (status == "pause" || status == "stop")
-                                      ? Icons.play_arrow
-                                      : Icons.pause,
-                                  size: 40, // アイコンの大きさを調整
-                                  color: AppTheme(context).playerIcon,
-                                ),
-                              ),
-
-                              const SizedBox(width: 10),
-
-                              // 次の曲へボタン
-                              _buildTransportButton(
-                                icon: Icons.skip_next,
-                                onTap: () => playNextSong(isAutomatic: false),
-                                onLongPressStart: (_) =>
-                                    _startContinuousSkip(true),
-                              ),
-
-                              const SizedBox(width: 20),
-
-                              // フォルダ跨ぎ切り替えボタン
-                              IconButton(
-                                icon: Icon(
-                                  Icons.account_tree, // フォルダを跨ぐイメージのアイコン
-                                  color: isFolderBridgeEnabled
-                                      ? Colors.greenAccent
-                                      : Colors.white24,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    isFolderBridgeEnabled =
-                                        !isFolderBridgeEnabled;
-                                  });
-                                  _saveAllSettings(); // 切り替えた瞬間に保存
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10), // 再生ボタン等と下の線の隙間
-                      ],
-                    ),
-
-                    // 左上の三本線（ハンバーガーメニュー）ボタン
-                    Positioned(
-                      left: 5,
-                      top: 5,
-                      child: Builder(
-                        builder: (context) => IconButton(
-                          icon: Icon(
-                            Icons.menu,
-                            color: AppTheme(context).backAndMenuIcon,
-                          ),
-                          onPressed: () {
-                            setState(() => drawerType = "menu"); // メニューモードに設定
-                            Scaffold.of(context).openDrawer(); // ドロワーを開く
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              PlayerPanel(
+                selectSong: selectSong,
+                status: status,
+                duration: duration,
+                position: position,
+                playMode: playMode,
+                isFolderBridgeEnabled: isFolderBridgeEnabled,
+                currentIndex: selectSong != null
+                    ? playlistSongs.indexOf(selectSong!) + 1
+                    : 0,
+                totalCount: playlistSongs.length,
+                onMenuPressed: () {
+                  setState(() => drawerType = "menu");
+                  _scaffoldKey.currentState?.openDrawer();
+                },
+                onPlayPausePressed: _handlePlayPause,
+                onNextPressed: () => playNextSong(isAutomatic: false),
+                onPreviousPressed: playPreviousSong,
+                onContinuousSkipStart: (isNext) => _startContinuousSkip(isNext),
+                onSeek: (val) =>
+                    _audioService.seek(Duration(seconds: val.toInt())),
+                onModeToggle: () =>
+                    setState(() => playMode = (playMode + 1) % 4),
+                onBridgeToggle: () {
+                  setState(
+                    () => isFolderBridgeEnabled = !isFolderBridgeEnabled,
+                  );
+                  _saveAllSettings();
+                },
               ),
 
               const Divider(height: 1, color: Colors.white24), // 境界線
