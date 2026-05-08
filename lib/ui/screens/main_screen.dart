@@ -457,7 +457,11 @@ class _MusicScannerState extends State<MusicScanner> {
                     onPressed: backToFolders,
                   )
                 else
-                  const SizedBox(width: 30),
+                  Icon(
+                    Icons.home,
+                    color: AppTheme(context).backAndMenuIcon,
+                    size: 33,
+                  ),
 
                 // タイトル部分
                 Expanded(
