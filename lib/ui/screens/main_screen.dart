@@ -16,6 +16,7 @@ import 'package:my_first_app/ui/theme/app_theme.dart';
 import '../../service/audio_player_service.dart';
 import '../widgets/music_tile.dart';
 import '../widgets/player_panel.dart'; // 再生パネル
+import '../widgets/app_drawer.dart';
 
 // 定数や設定だけを書く場所「看板(Widget)」
 class MusicScanner extends StatefulWidget {
@@ -78,7 +79,7 @@ class _MusicScannerState extends State<MusicScanner> {
 
   // Scaffoldを外部から操作するための「鍵」(ドロワー)
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  // ドロワーにどちらを表示するかを判定するフラグ
+  // サイドメニュー内での画面切り替え用(menu / settings)のフラグ
   String drawerType = "menu";
 
   // 今表示しているフォルダ内の曲を入れるリスト
@@ -458,7 +459,7 @@ class _MusicScannerState extends State<MusicScanner> {
                   )
                 else
                   Icon(
-                    Icons.home,
+                    Icons.home, //TODO
                     color: AppTheme(context).backAndMenuIcon,
                     size: 33,
                   ),
@@ -2465,140 +2466,6 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
-    サイドメニュー全体のドロワー用の関数
-  */
-  Widget _buildSystemMenu() {
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        DrawerHeader(
-          decoration: BoxDecoration(color: AppTheme(context).menuBackground),
-          child: Text(
-            "SYSTEM MENU",
-            style: TextStyle(
-              color: AppTheme(context).menuHeader,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-            ),
-          ),
-        ),
-        ListTile(
-          leading: Icon(Icons.refresh, color: AppTheme(context).menuIcon),
-          title: Text(
-            "全曲スキャン（更新）",
-            style: TextStyle(color: AppTheme(context).menuText),
-          ),
-          onTap: () async {
-            // 波紋が広がる時間を稼ぐ
-            await Future.delayed(const Duration(milliseconds: 150));
-            if (!mounted) return; // もし await の間にユーザーがメニューを閉じていたら、ここで処理を中断する
-            scanDevice(); // スキャン実行
-            Navigator.pop(context); // メニューを閉じる
-          },
-        ),
-        ListTile(
-          leading: Icon(Icons.settings, color: AppTheme(context).menuIcon),
-          title: Text(
-            "設定",
-            style: TextStyle(color: AppTheme(context).menuText),
-          ),
-          onTap: () async {
-            // 波紋が広がる時間を稼ぐ
-            await Future.delayed(const Duration(milliseconds: 150));
-            if (!mounted) return;
-            setState(() => drawerType = "settings");
-            _scaffoldKey.currentState?.openDrawer();
-          },
-        ),
-      ],
-    );
-  }
-
-  /*
-    設定メニューのドロワー用の関数
-  */
-  Widget _buildSettingsMenu() {
-    return Column(
-      children: [
-        DrawerHeader(
-          decoration: BoxDecoration(color: AppTheme(context).menuBackground),
-          child: Container(
-            alignment: Alignment.bottomLeft,
-            child: Text(
-              "設定",
-              style: TextStyle(
-                color: AppTheme(context).menuHeader,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-          ),
-        ),
-        Expanded(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  "カラーテーマ",
-                  style: TextStyle(
-                    color: AppTheme(context).menuText,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-              RadioGroup<ThemeMode>(
-                groupValue: widget.currentTheme,
-                onChanged: (ThemeMode? value) {
-                  if (value != null) {
-                    widget.onThemeChanged(value);
-                  }
-                },
-                child: Column(
-                  children: [
-                    _buildThemeOption(ThemeMode.system, "システム設定に準拠"),
-                    _buildThemeOption(ThemeMode.light, "ホワイトパターン"),
-                    _buildThemeOption(ThemeMode.dark, "ダークパターン"),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Divider(color: Colors.white24),
-        // システムメニューに戻るためのボタン
-        ListTile(
-          leading: Icon(Icons.arrow_back, color: AppTheme(context).menuIcon),
-          title: Text("メニューに戻る", style: TextStyle(color: Colors.grey)),
-          onTap: () async {
-            // 波紋が広がる時間を稼ぐ
-            await Future.delayed(const Duration(milliseconds: 150));
-            if (!mounted) return;
-            setState(() => drawerType = "menu");
-          },
-        ),
-      ],
-    );
-  }
-
-  /*
-    ラジオボタンの各項目を作る補助関数
-  */
-  Widget _buildThemeOption(ThemeMode mode, String label) {
-    return RadioListTile<ThemeMode>(
-      title: Text(
-        label,
-        style: TextStyle(color: AppTheme(context).listText, fontSize: 15),
-      ),
-      value: mode,
-      activeColor: AppTheme(context).sequenceHeaderText, // 選択時の色
-      contentPadding: EdgeInsets.zero,
-    );
-  }
-
-  /*
     権限エラー画面
   */
   Widget _buildPermissionError() {
@@ -2757,49 +2624,15 @@ class _MusicScannerState extends State<MusicScanner> {
         backgroundColor: AppTheme(context).mainBackground,
 
         // --- 左から出てくるメニュー（ドロワー） ---
-        drawer: Drawer(
-          backgroundColor: AppTheme(context).menuBackground, // メニューの背景色
-          // PopScopeで包んでバックボタンを監視
-          child: Stack(
-            children: [
-              Positioned.fill(
-                right: 3,
-                child: PopScope(
-                  // settingsモードの時は、バックボタンで戻る
-                  canPop: false,
-                  onPopInvokedWithResult: (didPop, result) {
-                    if (didPop) return; // 既に閉じているなら何もしない
-                    // settingsの時にバックボタンが押されたらmenuに戻す
-                    if (drawerType == "settings") {
-                      setState(() => drawerType = "menu");
-                    } else {
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: drawerType == "menu"
-                      ? _buildSystemMenu()
-                      : _buildSettingsMenu(),
-                ),
-              ),
-              Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: 3.8, // 縁取りの太さ
-                child: Container(
-                  decoration: BoxDecoration(
-                    // 縦方向（上から下）のグラデーション
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: AppTheme(context).menuGradientColors, // テーマから取得
-                      stops: const [0, 0.5, 1], // 透明 -> 発光 -> 透明 の切り替わり位置
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+        drawer: AppDrawer(
+          drawerType: drawerType, // 現在の状態を渡す
+          onTypeChanged: (type) => setState(() => drawerType = type), // 切り替えを記録する
+          currentTheme: widget.currentTheme,
+          onThemeChanged: widget.onThemeChanged,
+          onScanPressed: () {
+            Navigator.pop(context); // メニューを閉じる
+            scanDevice();
+          },
         ),
 
         // --- 画面本体 ---
@@ -2819,7 +2652,6 @@ class _MusicScannerState extends State<MusicScanner> {
                     : 0,
                 totalCount: playlistSongs.length,
                 onMenuPressed: () {
-                  setState(() => drawerType = "menu");
                   _scaffoldKey.currentState?.openDrawer();
                 },
                 onPlayPausePressed: _handlePlayPause,
