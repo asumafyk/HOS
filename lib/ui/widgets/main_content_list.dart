@@ -50,9 +50,11 @@ class MainContentList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
-          level == ViewLevel.sub ? "このまとめは空です" : "このフォルダは空です",
+          level == ViewLevel.parent
+              ? "まとめフォルダが読み込めていません\nサイドメニューより更新を試してください"
+              : (level == ViewLevel.sub ? "このまとめは空です" : "このフォルダは空です"),
           style: TextStyle(color: Colors.white24, fontSize: 16),
         ),
       );

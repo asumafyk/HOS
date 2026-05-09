@@ -18,7 +18,8 @@ import '../../service/audio_player_service.dart';
 import '../widgets/player_panel.dart'; // 再生パネル
 import '../widgets/app_drawer.dart';
 import '../widgets/list_header.dart';
-import '../widgets/header_menu.dart'; // インポート追加
+import '../widgets/header_menu.dart';
+import '../dialogs/folder_dialogs.dart';
 
 // 定数や設定だけを書く場所「看板(Widget)」
 class MusicScanner extends StatefulWidget {
@@ -160,14 +161,11 @@ class _MusicScannerState extends State<MusicScanner> {
 
     // 上記のどちらかが許可されたらスキャンを開始する
     if (granted || storageGranted) {
-      setState(() {
-        isPermissionGranted = true; // 許可された
-      });
+      setState(() => isPermissionGranted = true); // 許可された
       scanDevice();
     } else {
-      setState(() {
-        isPermissionGranted = false; // 拒否された
-      });
+      setState(() => isPermissionGranted = false); // 拒否された
+      FolderDialogs.showPermissionDialog(context);
       debugPrint("Permission Denied: Audio=$granted, Sstorage=$storageGranted");
     }
   }
@@ -1947,32 +1945,6 @@ class _MusicScannerState extends State<MusicScanner> {
         setState(() => status = "play");
       }
     }
-  }
-
-  /*
-    権限エラー画面
-  */
-  Widget _buildPermissionError() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.lock_outline, size: 80, color: Colors.amber),
-          const SizedBox(height: 20),
-          const Text(
-            "音楽ファイルへのアクセス権限が必要です",
-            style: TextStyle(color: Colors.white, fontSize: 16),
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () async {
-              await openAppSettings(); // 直接スマホの設定画面を開きます
-            },
-            child: const Text("設定画面を開いて許可する"),
-          ),
-        ],
-      ),
-    );
   }
 
   /*

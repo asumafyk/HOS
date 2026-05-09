@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class FolderDialogs {
   // 名前が空文字の際の警告用関数
@@ -138,6 +139,42 @@ class FolderDialogs {
               onConfirm();
             },
             child: const Text("削除", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 権限エラーダイアログ
+  static void showPermissionDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // 権限がないと進めないため、外側タップで閉じないようにする
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme(context).exitBackground,
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Colors.amber),
+            SizedBox(width: 8),
+            Text("権限が必要です", style: TextStyle(fontSize: 18)),
+          ],
+        ),
+        content: const Text(
+          "音楽ファイルへアクセスするために、\n端末の設定で権限を許可してください。",
+          style: TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("キャンセル"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              // 直接スマホの設定画面を開く（permission_handlerの機能）
+              await openAppSettings();
+            },
+            child: const Text("端末の設定を開く"),
           ),
         ],
       ),
