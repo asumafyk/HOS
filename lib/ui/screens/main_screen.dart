@@ -8,15 +8,17 @@ import 'package:flutter/services.dart';
 import 'package:my_first_app/service/storage_service.dart';
 import 'package:my_first_app/ui/dialogs/folder_dialogs.dart';
 import 'package:my_first_app/ui/widgets/bottom_action_bar.dart';
+import 'package:my_first_app/ui/widgets/main_content_list.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:permission_handler/permission_handler.dart';
 // 自前ファイル
 import 'package:my_first_app/core/constants.dart';
 import 'package:my_first_app/ui/theme/app_theme.dart';
 import '../../service/audio_player_service.dart';
-import '../widgets/music_tile.dart';
 import '../widgets/player_panel.dart'; // 再生パネル
 import '../widgets/app_drawer.dart';
+import '../widgets/list_header.dart';
+import '../widgets/header_menu.dart'; // インポート追加
 
 // 定数や設定だけを書く場所「看板(Widget)」
 class MusicScanner extends StatefulWidget {
@@ -378,44 +380,10 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
-    共通部品：リストの項目を持ち上げた際の装飾関数
-  */
-  Widget _buildProxyDecorator(
-    Widget child,
-    int index,
-    Animation<double> animation,
-  ) {
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, animChild) {
-        // 持ち上げ進行度
-        final double animValue = Curves.easeInOut.transform(animation.value);
-        // 左にずらす量
-        final double offsetX = animValue * -10.0;
-        // 上にずらす量
-        final double offsetY = animValue * -6.0;
-        // 影の深さ
-        final double elevation = animValue * 8.0;
-        return Transform.translate(
-          offset: Offset(offsetX, offsetY),
-          child: Material(
-            elevation: elevation,
-            color: Colors.greenAccent.withValues(alpha: 0.3), // 浮いているときの色
-            shadowColor: Colors.black54,
-            child: child,
-          ),
-        );
-      },
-    );
-  }
-
-  /*
     共通部品：リストのヘッダー作成用の関数
   */
   Widget _buildUnifiedListHeader() {
-    final theme = AppTheme(context);
-
-    // 表示するタイトルの決定
+    // 表示するタイトルの決定ロジック
     String title = "";
     if (currentParentName == null) {
       title = "まとめフォルダ一覧";
@@ -429,102 +397,27 @@ class _MusicScannerState extends State<MusicScanner> {
       title = folderNicknames[currentFolderName] ?? currentFolderName!;
     }
 
-    return Column(
-      children: [
-        // ヘッダー本体
-        InkWell(
-          onTap: () => setState(() => isHeaderOpen = !isHeaderOpen),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: theme.listBackground.withValues(alpha: 0.8),
-              border: Border(
-                bottom: BorderSide(color: theme.listBorder, width: 0.5),
-              ),
-            ),
-            child: Row(
-              children: [
-                if (currentParentName != null)
-                  // 戻るボタン
-                  IconButton(
-                    padding: EdgeInsets.zero, // paddingをゼロにし、左端へ
-                    constraints: const BoxConstraints(), // アイコン自体のサイズに凝縮
-                    icon: Icon(
-                      Icons.arrow_back,
-                      color: AppTheme(context).backAndMenuIcon,
-                      size: 30,
-                    ),
-                    onPressed: backToFolders,
-                  )
-                else
-                  Icon(
-                    Icons.home, //TODO
-                    color: AppTheme(context).backAndMenuIcon,
-                    size: 33,
-                  ),
-
-                // タイトル部分
-                Expanded(
-                  child: Text(
-                    title,
-                    // ここがポイント：開いている時は2行、閉じている時は1行
-                    maxLines: isHeaderOpen ? 2 : 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme(context).folderHeaderText,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  isHeaderOpen
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  color: Colors.blue,
-                  size: 20,
-                ),
-                if (currentFolderName != null && currentFolderName != "⭐ お気に入り")
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      favoriteFolders.contains(currentFolderName)
-                          ? Icons.push_pin
-                          : Icons.push_pin_outlined,
-                      color: favoriteFolders.contains(currentFolderName)
-                          ? Colors.blueAccent
-                          : Colors.white24,
-                      size: 25,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        if (favoriteFolders.contains(currentFolderName)) {
-                          favoriteFolders.remove(currentFolderName);
-                        } else {
-                          favoriteFolders.add(currentFolderName!);
-                        }
-                      });
-                      _saveAllSettings();
-                      scanDevice(); // 並び順更新のため再スキャン
-                    },
-                  )
-                else
-                  SizedBox(width: 35),
-              ],
-            ),
-          ),
-        ),
-        // ポップダウン・メニューエリア
-        AnimatedSize(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeInOut,
-          child: isHeaderOpen
-              ? _buildHeaderPopDownMenu() // 既存のメニュー関数を呼び出し
-              : const SizedBox(width: double.infinity, height: 0),
-        ),
-      ],
+    return ListHeader(
+      title: title,
+      isHeaderOpen: isHeaderOpen,
+      isTopLevel: currentParentName == null,
+      showPinButton:
+          currentFolderName != null && currentFolderName != "⭐ お気に入り",
+      isPinned: favoriteFolders.contains(currentFolderName),
+      onHeaderTap: () => setState(() => isHeaderOpen = !isHeaderOpen),
+      onBackTap: backToFolders,
+      onPinTap: () {
+        setState(() {
+          if (favoriteFolders.contains(currentFolderName)) {
+            favoriteFolders.remove(currentFolderName);
+          } else {
+            favoriteFolders.add(currentFolderName!);
+          }
+        });
+        _saveAllSettings();
+        scanDevice();
+      },
+      menuContent: _buildHeaderPopDownMenu(), // メニューの中身を渡す
     );
   }
 
@@ -533,184 +426,144 @@ class _MusicScannerState extends State<MusicScanner> {
   */
   Widget _buildHeaderPopDownMenu() {
     // 表示するボタンのリストを階層ごとに準備
-    List<Widget> menuItems = [];
+    List<HeaderMenuItem> items = [];
 
     if (currentFolderName != null) {
       // --- 最下層（曲一覧）でのメニュー ---
-      menuItems = [
-        _buildMenuIcon(Icons.library_add, "All Songs から\n曲を追加", () {
-          setState(() => _resetModes());
-          //TODO _showAddSongsFromAllSongsDialog();
-        }),
-        _buildMenuIcon(Icons.copy, "コピー", () {
-          setState(() {
+      items = [
+        HeaderMenuItem(
+          icon: Icons.library_add,
+          label: "All Songs から\n曲を追加",
+          onTap: () {},
+        ), // TODO
+        HeaderMenuItem(
+          icon: Icons.copy,
+          label: "コピー",
+          onTap: () => setState(() {
             _resetModes();
             isSelectionMode = true;
             isCopyMode = true;
-          });
-        }),
-        _buildMenuIcon(Icons.move_up, "移動", () {
-          setState(() {
+          }),
+        ),
+        HeaderMenuItem(
+          icon: Icons.move_up,
+          label: "移動",
+          onTap: () => setState(() {
             _resetModes();
             isSelectionMode = true;
             isMoveMode = true;
-          });
-        }),
-        _buildMenuIcon(Icons.delete_sweep, "削除", () {
-          setState(() {
+          }),
+        ),
+        HeaderMenuItem(
+          icon: Icons.delete_sweep,
+          label: "削除",
+          color: Colors.redAccent,
+          onTap: () => setState(() {
             _resetModes();
             isDeleteMode = true;
             isSelectionMode = true;
-          });
-        }, color: Colors.redAccent),
-        _buildMenuIcon(Icons.sort, "並べ替え\n(再生順も同期)", () {
-          setState(() {
+          }),
+        ),
+        HeaderMenuItem(
+          icon: Icons.sort,
+          label: "並べ替え\n(再生順も同期)",
+          onTap: () => setState(() {
             _resetModes();
             isSortMode = true;
-          });
-        }),
+          }),
+        ),
       ];
     } else if (currentParentName == "All Songs") {
       // --- All Songs でのメニュー
-      menuItems = [
-        _buildMenuIcon(Icons.rule_rounded, "まとめフォルダ\nに追加", () {
-          setState(() {
+      items = [
+        HeaderMenuItem(
+          icon: Icons.rule_rounded,
+          label: "まとめフォルダ\nに追加",
+          onTap: () => setState(() {
             _resetModes();
             isSelectionMode = true;
             isAssignMode = true;
-          });
-        }),
+          }),
+        ),
       ];
     } else if (currentParentName != null) {
       // --- 中位（自作まとめフォルダ）でのメニュー ---
-      menuItems = [
-        _buildMenuIcon(
-          Icons.add_to_photos_outlined,
-          "All Songs から\nフォルダ追加",
-          () {
-            setState(() => _resetModes());
-            _showAddFoldersToSummaryDialog();
-          },
+      items = [
+        HeaderMenuItem(
+          icon: Icons.add_to_photos_outlined,
+          label: "All Songs から\nフォルダ追加",
+          onTap: _showAddFoldersToSummaryDialog,
         ),
-        _buildMenuIcon(Icons.create_new_folder_outlined, "空フォルダ作成", () {
-          setState(() => _resetModes());
-          _showCreateVirtualFolderDialog();
-        }),
-        _buildMenuIcon(Icons.edit_note, "名前変更", () {
-          setState(() {
+        HeaderMenuItem(
+          icon: Icons.create_new_folder_outlined,
+          label: "空フォルダ作成",
+          onTap: _showCreateVirtualFolderDialog,
+        ),
+        HeaderMenuItem(
+          icon: Icons.edit_note,
+          label: "名前変更",
+          onTap: () => setState(() {
             _resetModes();
             isRenameMode = true;
-          });
-        }),
-        _buildMenuIcon(Icons.sort, "並べ替え\n(再生順も同期)", () {
-          setState(() {
+          }),
+        ),
+        HeaderMenuItem(
+          icon: Icons.sort,
+          label: "並べ替え\n(再生順も同期)",
+          onTap: () => setState(() {
             _resetModes();
             isSortMode = true;
-          });
-        }),
-        _buildMenuIcon(Icons.playlist_remove, "まとめから外す", () {
-          setState(() {
+          }),
+        ),
+        HeaderMenuItem(
+          icon: Icons.playlist_remove,
+          label: "まとめから外す",
+          color: Colors.orangeAccent,
+          onTap: () => setState(() {
             _resetModes();
             isDeleteMode = true;
             isSelectionMode = true;
-          });
-        }, color: Colors.orangeAccent),
+          }),
+        ),
       ];
     } else {
       // --- 親階層（まとめ一覧）でのメニュー ---
-      menuItems = [
-        // まとめ新規作成
-        _buildMenuIcon(Icons.create_new_folder_outlined, "まとめ\n新規作成", () {
-          setState(() => _resetModes());
-          _showAddParentFolderDialog();
-        }),
-        // 名前変更モード
-        _buildMenuIcon(Icons.edit_note, "名前変更", () {
-          setState(() {
+      items = [
+        HeaderMenuItem(
+          icon: Icons.create_new_folder_outlined,
+          label: "まとめ\n新規作成",
+          onTap: _showAddParentFolderDialog,
+        ),
+        HeaderMenuItem(
+          icon: Icons.edit_note,
+          label: "名前変更",
+          onTap: () => setState(() {
             _resetModes();
             isRenameMode = true;
-          });
-        }),
-        // 並べ替えモード
-        _buildMenuIcon(Icons.sort, "並べ替え", () {
-          setState(() {
+          }),
+        ),
+        HeaderMenuItem(
+          icon: Icons.sort,
+          label: "並べ替え",
+          onTap: () => setState(() {
             _resetModes();
             isSortMode = true;
-          });
-        }),
-        // 削除モード
-        _buildMenuIcon(Icons.remove_circle_outline, "削除", () {
-          setState(() {
+          }),
+        ),
+        HeaderMenuItem(
+          icon: Icons.remove_circle_outline,
+          label: "削除",
+          color: Colors.redAccent,
+          onTap: () => setState(() {
             _resetModes();
             isDeleteMode = true;
             isSelectionMode = true;
-          });
-        }, color: Colors.redAccent),
+          }),
+        ),
       ];
     }
 
-    return Container(
-      color: AppTheme(
-        context,
-      ).sequenceBackground.withValues(alpha: 0.5), // 少し透かすと重厚感が出ます
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: GridView.count(
-        shrinkWrap: true, // 内容量に合わせる
-        physics: const NeverScrollableScrollPhysics(), // スクロールさせない
-        crossAxisCount: 4, // 4列
-        mainAxisSpacing: 6, // 縦の隙間
-        crossAxisSpacing: 8, // 横の隙間
-        childAspectRatio: 1.0, // ボタンの形を少し横長にして高さを抑える
-        children: menuItems,
-      ),
-    );
-  }
-
-  /*
-    共通部品：ヘッダー管理メニューの項目ごとのアイコンボタン作成
-  */
-  Widget _buildMenuIcon(
-    IconData icon,
-    String label,
-    VoidCallback onTap, {
-    Color? color,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: (color ?? Colors.blueAccent).withValues(alpha: 0.3),
-              width: 1,
-            ),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 20, color: color ?? Colors.blueAccent),
-              const SizedBox(height: 2),
-              Expanded(
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 10),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return HeaderMenu(items: items);
   }
 
   /*
@@ -729,85 +582,6 @@ class _MusicScannerState extends State<MusicScanner> {
       selectedSongPaths.clear();
       selectedFolders.clear();
     });
-  }
-
-  /*
-    上位フォルダ一覧を表示する関数
-  */
-  Widget _buildParentFolderList() {
-    return Column(
-      children: [
-        // 上位フォルダのリスト
-        Expanded(
-          child: ReorderableListView(
-            buildDefaultDragHandles: false,
-            proxyDecorator: _buildProxyDecorator,
-            onReorder: (oldIndex, newIndex) {
-              // All Songs が絡む移動はシステム的に拒否する
-              if (oldIndex == 0 || newIndex == 0) return;
-              setState(() {
-                if (oldIndex < newIndex) newIndex -= 1;
-                final item = parentFolderOrder.removeAt(oldIndex);
-                parentFolderOrder.insert(newIndex, item);
-              });
-              _saveAllSettings();
-            },
-            children: parentFolderOrder.asMap().entries.map((entry) {
-              int index = entry.key;
-              String parentName = entry.value;
-
-              // タイルの材料を準備
-              final String displayName =
-                  folderNicknames[parentName] ?? parentName;
-
-              return MusicTile(
-                key: ValueKey("parent_$parentName"), // 並べ替えに必須
-                level: ViewLevel.parent, // 階層
-                id: parentName, // まとめフォルダ名
-                index: index, // 並び順
-                displayName: displayName,
-                isPlaying: (playingParentName == parentName), // 再生中の光
-                isChecked: selectedFolders.contains(parentName),
-                isSelectionMode: isSelectionMode && parentName != "All Songs",
-                isSortMode: isSortMode,
-                isRenameMode: isRenameMode,
-                isDeleteMode: isDeleteMode,
-                isFavorite: false,
-
-                // タップの動きをメイン画面のロジックとつなぐ
-                onTap: () {
-                  // チェックボックスがある状態なら、チェックボックスを選択する
-                  if (isSelectionMode && parentName != "All Songs") {
-                    setState(() {
-                      selectedFolders.contains(parentName)
-                          ? selectedFolders.remove(parentName)
-                          : selectedFolders.add(parentName);
-                    });
-                    return;
-                  }
-                  if (isSortMode || isRenameMode) return;
-                  // 通常タップ処理
-                  _resetModes();
-                  setState(() => currentParentName = parentName);
-                },
-                onCheckboxChanged: parentName == "All Songs"
-                    ? (_) {} // 何もしない（エラー回避）
-                    : (val) {
-                        setState(() {
-                          val!
-                              ? selectedFolders.add(parentName)
-                              : selectedFolders.remove(parentName);
-                        });
-                      },
-                onFavoriteTap: () {}, // 親階層では不要
-                onRenameTap: () => _showRenameParentFolderDialog(parentName),
-                onDeleteTap: () => _confirmDeleteParentFolder(parentName),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
   }
 
   /*
@@ -1102,200 +876,6 @@ class _MusicScannerState extends State<MusicScanner> {
       counter++;
     }
     return "${baseName}_$counter";
-  }
-
-  /*
-    フォルダ一覧を表示するための交通整理用の関数
-  */
-  Widget _buildFolderList() {
-    // もし権限がなければ、案内画面を返す
-    if (!isPermissionGranted) {
-      return _buildPermissionError(); // 権限エラー表示
-    }
-
-    if (currentParentName == "All Songs") {
-      return _buildAllSongsManager(); // 全フォルダ表示 ＆ 仕分けモード
-    } else {
-      return _buildCustomFolderViewer(); // 特定のまとめフォルダ内を表示
-    }
-  }
-
-  /*
-    All Songs フォルダ用の関数（全フォルダ表示 ＆ 複数選択・仕分け）
-  */
-  Widget _buildAllSongsManager() {
-    List<String> physicalFolders = folderMap.keys
-        .where((key) => !key.startsWith("VIRTUAL_") && key != "All Songs")
-        .toList();
-
-    return Column(
-      children: [
-        // All Songs内のリスト
-        Expanded(
-          child: ReorderableListView(
-            buildDefaultDragHandles: false,
-            proxyDecorator: _buildProxyDecorator,
-            onReorder: (oldIdx, newIdx) {
-              // 並び順の関数
-              setState(() {
-                if (oldIdx < newIdx) newIdx -= 1;
-                // TODO 注意：folderMap.keys は固定的なので、
-                // 並び順を保持するなら physicalFolderOrder 等の別リストが必要です
-              });
-            },
-            children: physicalFolders.asMap().entries.map((entry) {
-              int index = entry.key;
-              String folderName = entry.value;
-
-              // タイルの材料を準備
-              final String displayName =
-                  folderNicknames[folderName] ?? folderName;
-
-              return MusicTile(
-                key: ValueKey("all_songs_$folderName"),
-                level: ViewLevel.sub, // 階層
-                id: folderName, // フォルダ名
-                index: index, // 並び順
-                displayName: displayName,
-                isPlaying: (playingFolderName == folderName),
-                isChecked: selectedFolders.contains(folderName),
-                isSelectionMode: isSelectionMode,
-                isSortMode: isSortMode,
-                isRenameMode: false, // All Songs では名前変更不可
-                isDeleteMode: false, // All Songs では削除不可
-                isFavorite: favoriteFolders.contains(folderName),
-
-                onTap: () {
-                  // チェックボックスがある状態なら、チェックボックスを選択する
-                  if (isSelectionMode) {
-                    setState(() {
-                      selectedFolders.contains(folderName)
-                          ? selectedFolders.remove(folderName)
-                          : selectedFolders.add(folderName);
-                    });
-                    return;
-                  }
-                  // 通常タップ処理
-                  _resetModes();
-                  enterFolder(folderName);
-                },
-                onCheckboxChanged: (val) {
-                  setState(() {
-                    val!
-                        ? selectedFolders.add(folderName)
-                        : selectedFolders.remove(folderName);
-                  });
-                },
-                onFavoriteTap: () {
-                  setState(() {
-                    favoriteFolders.contains(folderName)
-                        ? favoriteFolders.remove(folderName)
-                        : favoriteFolders.add(folderName);
-                  });
-                  _saveAllSettings();
-                },
-                onRenameTap: () {},
-                onDeleteTap: () {},
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /*
-    自作のまとめフォルダを表示する関数
-  */
-  Widget _buildCustomFolderViewer() {
-    List<String> folders = parentFolderMap[currentParentName] ?? [];
-
-    return Column(
-      children: [
-        // フォルダーリスト
-        Expanded(
-          child: folders.isEmpty
-              ? const Center(
-                  child: Text(
-                    "このまとめは空です",
-                    style: TextStyle(color: Colors.white24, fontSize: 16),
-                  ),
-                )
-              : ReorderableListView(
-                  buildDefaultDragHandles: false,
-                  proxyDecorator: _buildProxyDecorator,
-                  onReorder: (oldIdx, newIdx) {
-                    setState(() {
-                      if (oldIdx < newIdx) newIdx -= 1;
-                      final item = folders.removeAt(oldIdx);
-                      folders.insert(newIdx, item);
-                    });
-                    _saveAllSettings();
-                  },
-                  children: folders.asMap().entries.map((entry) {
-                    int index = entry.key;
-                    String folderName = entry.value;
-
-                    // タイルの材料を準備
-                    String displayName =
-                        folderNicknames[folderName] ?? folderName;
-                    if (displayName.startsWith("VIRTUAL_")) {
-                      displayName = "名称未設定フォルダ";
-                    }
-
-                    return MusicTile(
-                      key: ValueKey("custom_sub_$folderName"),
-                      level: ViewLevel.sub, // 階層
-                      id: folderName, // フォルダ名
-                      index: index, // 並び順
-                      displayName: displayName,
-                      isPlaying: (playingFolderName == folderName),
-                      isChecked: selectedFolders.contains(folderName),
-                      isSelectionMode: isSelectionMode,
-                      isSortMode: isSortMode,
-                      isRenameMode: isRenameMode,
-                      isDeleteMode: isDeleteMode,
-                      isFavorite: favoriteFolders.contains(folderName),
-
-                      onTap: () {
-                        // チェックボックスがある状態なら、チェックボックスを選択する
-                        if (isSelectionMode) {
-                          setState(() {
-                            selectedFolders.contains(folderName)
-                                ? selectedFolders.remove(folderName)
-                                : selectedFolders.add(folderName);
-                          });
-                          return;
-                        }
-                        if (isSortMode || isRenameMode) return;
-                        // 通常タップ処理
-                        _resetModes();
-                        enterFolder(folderName);
-                      },
-                      onCheckboxChanged: (val) {
-                        setState(() {
-                          val!
-                              ? selectedFolders.add(folderName)
-                              : selectedFolders.remove(folderName);
-                        });
-                      },
-                      onFavoriteTap: () {
-                        setState(() {
-                          favoriteFolders.contains(folderName)
-                              ? favoriteFolders.remove(folderName)
-                              : favoriteFolders.add(folderName);
-                        });
-                        _saveAllSettings();
-                      },
-                      onRenameTap: () =>
-                          _showRenamePhysicalFolderDialog(folderName),
-                      onDeleteTap: () => _confirmRemoveFromSummary(folderName),
-                    );
-                  }).toList(),
-                ),
-        ),
-      ],
-    );
   }
 
   /*
@@ -1640,102 +1220,6 @@ class _MusicScannerState extends State<MusicScanner> {
 
     // 3. 変更を保存
     _saveAllSettings();
-  }
-
-  /*
-    フォルダ内の曲を表示する関数
-  */
-  Widget _buildSongList() {
-    return Column(
-      children: [
-        // 曲のリストエリア
-        Expanded(
-          child: ReorderableListView(
-            buildDefaultDragHandles: false,
-            proxyDecorator: _buildProxyDecorator,
-            onReorder: (oldIdx, newIdx) {
-              setState(() {
-                if (oldIdx < newIdx) newIdx -= 1;
-                final item = displayedSongs.removeAt(oldIdx);
-                displayedSongs.insert(newIdx, item);
-
-                // 仮想フォルダの場合、見た目だけでなく曲の並び順リストも並べ替えて保存する
-                if (currentFolderName != null &&
-                    folderMap.containsKey(currentFolderName)) {
-                  folderMap[currentFolderName!] = List<SongModel>.from(
-                    displayedSongs,
-                  );
-                  _saveAllSettings();
-                }
-              });
-            },
-            children: displayedSongs.asMap().entries.map((entry) {
-              int index = entry.key;
-              SongModel song = entry.value;
-
-              // タイルの材料を準備
-              final String displayName =
-                  songNicknames[song.data] ?? song.displayNameWOExt;
-
-              return MusicTile(
-                key: ValueKey("song_${song.data}"),
-                level: ViewLevel.song, // 階層
-                id: song.data, // 曲名
-                index: index, // 並び順
-                song: song,
-                displayName: displayName,
-                isPlaying:
-                    (selectSong?.data == song.data &&
-                    playingFolderName == currentFolderName),
-                isChecked: selectedSongPaths.contains(song.data),
-                isSelectionMode: isSelectionMode,
-                isSortMode: isSortMode,
-                isRenameMode: isRenameMode,
-                isDeleteMode: isDeleteMode,
-                isFavorite: favoriteSongs.contains(song.data),
-
-                onTap: () {
-                  // チェックボックスがある状態なら、チェックボックスを選択する
-                  if (isSelectionMode) {
-                    setState(() {
-                      selectedSongPaths.contains(song.data)
-                          ? selectedSongPaths.remove(song.data)
-                          : selectedSongPaths.add(song.data);
-                    });
-                    return;
-                  }
-                  if (isSortMode || isRenameMode) return;
-                  // 通常タップ処理
-                  setState(() {
-                    playlistSongs = List.from(displayedSongs);
-                    playingFolderName = currentFolderName;
-                    playingParentName = currentParentName;
-                  });
-                  _executePlay(song);
-                },
-                onCheckboxChanged: (val) {
-                  setState(() {
-                    val!
-                        ? selectedSongPaths.add(song.data)
-                        : selectedSongPaths.remove(song.data);
-                  });
-                },
-                onFavoriteTap: () {
-                  setState(() {
-                    favoriteSongs.contains(song.data)
-                        ? favoriteSongs.remove(song.data)
-                        : favoriteSongs.add(song.data);
-                  });
-                  _saveAllSettings();
-                },
-                onRenameTap: () {},
-                onDeleteTap: () {},
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
   }
 
   /*
@@ -2626,7 +2110,8 @@ class _MusicScannerState extends State<MusicScanner> {
         // --- 左から出てくるメニュー（ドロワー） ---
         drawer: AppDrawer(
           drawerType: drawerType, // 現在の状態を渡す
-          onTypeChanged: (type) => setState(() => drawerType = type), // 切り替えを記録する
+          onTypeChanged: (type) =>
+              setState(() => drawerType = type), // 切り替えを記録する
           currentTheme: widget.currentTheme,
           onThemeChanged: widget.onThemeChanged,
           onScanPressed: () {
@@ -2688,11 +2173,159 @@ class _MusicScannerState extends State<MusicScanner> {
                 child: Stack(
                   children: [
                     // メインリストの表示
-                    currentParentName == null
-                        ? _buildParentFolderList() // 1.最初は「まとめ一覧」を表示
-                        : (currentFolderName == null
-                              ? _buildFolderList() // 2.まとめを選んだら、「その中のフォルダを表示」
-                              : _buildSongList()), // 3.フォルダを選んだら、「その中の曲一覧」
+                    MainContentList(
+                      // --- 現在の階層に応じたレベルとアイテムを切り替える ---
+                      level: currentParentName == null
+                          ? ViewLevel.parent
+                          : (currentFolderName == null
+                                ? ViewLevel.sub
+                                : ViewLevel.song),
+                      items: currentParentName == null
+                          ? parentFolderOrder
+                          : (currentFolderName == null
+                                ? (currentParentName == "All Songs"
+                                      ? folderMap.keys
+                                            .where(
+                                              (k) =>
+                                                  !k.startsWith("VIRTUAL_") &&
+                                                  k != "All Songs",
+                                            )
+                                            .toList()
+                                      : parentFolderMap[currentParentName] ??
+                                            [])
+                                : displayedSongs),
+                      // --- 状態の受け渡し ---
+                      playingId: (currentFolderName != null)
+                          ? selectSong?.data
+                          : (currentParentName == null
+                                ? playingParentName
+                                : playingFolderName),
+                      selectedIds: currentFolderName == null
+                          ? selectedFolders
+                          : selectedSongPaths,
+                      isSelectionMode: isSelectionMode,
+                      isSortMode: isSortMode,
+                      isRenameMode: isRenameMode,
+                      isDeleteMode: isDeleteMode,
+                      favoriteIds: currentFolderName == null
+                          ? favoriteFolders
+                          : favoriteSongs,
+                      nicknames: currentFolderName == null
+                          ? folderNicknames
+                          : songNicknames,
+                      // --- 各種操作ロジック（既存の関数をつなぐ） ---
+                      onTap: (item, index) {
+                        // 1. タップ時のロジック
+                        if (isSelectionMode) {
+                          setState(() {
+                            final id = (item is SongModel)
+                                ? item.data
+                                : item.toString();
+                            if (currentFolderName == null) {
+                              selectedFolders.contains(id)
+                                  ? selectedFolders.remove(id)
+                                  : selectedFolders.add(id);
+                            } else {
+                              selectedSongPaths.contains(id)
+                                  ? selectedSongPaths.remove(id)
+                                  : selectedSongPaths.add(id);
+                            }
+                          });
+                          return;
+                        }
+                        if (isSortMode || isRenameMode) return;
+
+                        _resetModes();
+                        if (currentParentName == null) {
+                          setState(() => currentParentName = item.toString());
+                        } else if (currentFolderName == null) {
+                          enterFolder(item.toString());
+                        } else {
+                          setState(() {
+                            playlistSongs = List.from(displayedSongs);
+                            playingFolderName = currentFolderName;
+                            playingParentName = currentParentName;
+                          });
+                          _executePlay(item as SongModel);
+                        }
+                      },
+                      onReorder: (oldIdx, newIdx) {
+                        // 2. 並び替え時のロジック
+                        setState(() {
+                          if (oldIdx < newIdx) newIdx -= 1;
+
+                          if (currentParentName == null) {
+                            if (oldIdx == 0 || newIdx == 0) {
+                              return; // All Songs保護
+                            }
+                            final item = parentFolderOrder.removeAt(oldIdx);
+                            parentFolderOrder.insert(newIdx, item);
+                          } else if (currentFolderName == null) {
+                            final list = parentFolderMap[currentParentName!]!;
+                            final item = list.removeAt(oldIdx);
+                            list.insert(newIdx, item);
+                          } else {
+                            final item = displayedSongs.removeAt(oldIdx);
+                            displayedSongs.insert(newIdx, item);
+                            folderMap[currentFolderName!] =
+                                List<SongModel>.from(displayedSongs);
+                          }
+                        });
+                        _saveAllSettings();
+                      },
+                      onCheckboxChanged: (item, val) {
+                        // 3. チェックボックスの変更時ロジック
+                        setState(() {
+                          final id = (item is SongModel)
+                              ? item.data
+                              : item.toString();
+                          if (currentFolderName == null) {
+                            val!
+                                ? selectedFolders.add(id)
+                                : selectedFolders.remove(id);
+                          } else {
+                            val!
+                                ? selectedSongPaths.add(id)
+                                : selectedSongPaths.remove(id);
+                          }
+                        });
+                      },
+                      onFavoriteTap: (item) {
+                        // 4. お気に入り（スター/ピン）タップ時のロジック
+                        setState(() {
+                          final id = (item is SongModel)
+                              ? item.data
+                              : item.toString();
+                          if (item is SongModel) {
+                            favoriteSongs.contains(id)
+                                ? favoriteFolders.remove(id)
+                                : favoriteFolders.add(id);
+                          } else {
+                            favoriteFolders.contains(id)
+                                ? favoriteFolders.remove(id)
+                                : favoriteFolders.add(id);
+                          }
+                        });
+                        _saveAllSettings();
+                      },
+                      onRenameTap: (item) {
+                        // 5. 名前変更タップ時のロジック
+                        if (currentParentName == null) {
+                          _showRenameParentFolderDialog(item.toString());
+                        } else {
+                          _showRenamePhysicalFolderDialog(item.toString());
+                        }
+                      },
+                      onDeleteTap: (item) {
+                        // 6. 削除タップ時のロジック
+                        if (currentParentName == null) {
+                          _confirmDeleteParentFolder(item.toString());
+                        } else {
+                          _confirmRemoveFromSummary(item.toString());
+                        }
+                      },
+                    ),
+
                     // 下から出てくるメニュー
                     if (isAnyMode)
                       Positioned(

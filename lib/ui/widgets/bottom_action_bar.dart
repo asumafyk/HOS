@@ -1,6 +1,6 @@
 /* 
  * ファイル名: bottom_action_bar.dart
- * 役割: 削除モードなどの選択モード中に表示される、一括操作用のメニュー
+ * 役割: 下部に、削除モードなどの選択モード中に表示される、一括操作用のメニュー
  */
 
 import 'package:flutter/material.dart';
