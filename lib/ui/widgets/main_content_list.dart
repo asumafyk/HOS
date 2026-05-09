@@ -75,7 +75,8 @@ class MainContentList extends StatelessWidget {
         if (displayName.startsWith("VIRTUAL_")) displayName = "名称未設定フォルダ";
 
         return MusicTile(
-          level: level,
+          key: ValueKey("${level.name}_$id"), // レベルとIDを組み合わせて一意にする
+          level: level, // 階層
           id: id, // まとめフォルダ・フォルダ・曲ファイル名
           index: index, // 並び順
           song: (item is SongModel) ? item : null,

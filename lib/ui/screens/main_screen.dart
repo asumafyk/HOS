@@ -19,7 +19,6 @@ import '../widgets/player_panel.dart'; // 再生パネル
 import '../widgets/app_drawer.dart';
 import '../widgets/list_header.dart';
 import '../widgets/header_menu.dart';
-import '../dialogs/folder_dialogs.dart';
 
 // 定数や設定だけを書く場所「看板(Widget)」
 class MusicScanner extends StatefulWidget {
@@ -165,7 +164,9 @@ class _MusicScannerState extends State<MusicScanner> {
       scanDevice();
     } else {
       setState(() => isPermissionGranted = false); // 拒否された
-      FolderDialogs.showPermissionDialog(context);
+      Future.delayed(Duration.zero, () {
+        if (mounted) FolderDialogs.showPermissionDialog(context);
+      });
       debugPrint("Permission Denied: Audio=$granted, Sstorage=$storageGranted");
     }
   }
@@ -259,21 +260,10 @@ class _MusicScannerState extends State<MusicScanner> {
   Future<void> scanDevice() async {
     // 二重実行と権限チェックのガード
     if (_isScanning || !isPermissionGranted) return;
-    setState(() => _isScanning = true);
-
-    bool check =
-        await Permission.storage.isGranted || await Permission.audio.isGranted;
-    setState(() {
-      isPermissionGranted = check;
-    });
-
-    // 権限がなければ、これ以上進まない（曲を探しに行かない）
-    if (!check) {
-      _isScanning = false;
-      return;
-    }
+    _isScanning = true;
 
     try {
+      debugPrint("Start Scanning...");
       // スマホ内のデータベースに曲を要求する（権限がある前提）
       List<SongModel> songs = await _audioQuery.querySongs(
         ignoreCase: true,
@@ -281,6 +271,7 @@ class _MusicScannerState extends State<MusicScanner> {
         orderType: OrderType.ASC_OR_SMALLER, // 昇順（あいうえお順
         uriType: UriType.EXTERNAL, // 外部ストレージ
       );
+      debugPrint("後");
 
       // 最終的な地図
       Map<String, List<SongModel>> finalMap = {};
@@ -2156,7 +2147,7 @@ class _MusicScannerState extends State<MusicScanner> {
                           ? parentFolderOrder
                           : (currentFolderName == null
                                 ? (currentParentName == "All Songs"
-                                      ? folderMap.keys
+                                      ? parentFolderMap["All Songs"]!
                                             .where(
                                               (k) =>
                                                   !k.startsWith("VIRTUAL_") &&
@@ -2189,6 +2180,8 @@ class _MusicScannerState extends State<MusicScanner> {
                       onTap: (item, index) {
                         // 1. タップ時のロジック
                         if (isSelectionMode) {
+                          if (item == "All Songs") return;
+
                           setState(() {
                             final id = (item is SongModel)
                                 ? item.data
@@ -2270,8 +2263,8 @@ class _MusicScannerState extends State<MusicScanner> {
                               : item.toString();
                           if (item is SongModel) {
                             favoriteSongs.contains(id)
-                                ? favoriteFolders.remove(id)
-                                : favoriteFolders.add(id);
+                                ? favoriteSongs.remove(id)
+                                : favoriteSongs.add(id);
                           } else {
                             favoriteFolders.contains(id)
                                 ? favoriteFolders.remove(id)
