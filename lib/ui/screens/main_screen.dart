@@ -1,6 +1,8 @@
 /*
-  メイン画面
-*/
+ * ファイル名: main_screen.dart
+ * 役割: UIの構築・データの更新
+ */
+
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -734,74 +736,11 @@ class _MusicScannerState extends State<MusicScanner> {
     All Songs 内の各フォルダに対して「移動先を選択」する処理用の関数
   */
   void _showBatchAssignmentDialog() {
-    String newParentName = "";
-    final theme = AppTheme(context);
-
-    showDialog(
+    FolderDialogs.showAssignSelectorDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: theme.sequenceBackground,
-        title: const Text("仕分け先を選択", style: TextStyle(color: Colors.white)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 新規作成用の入力欄
-              TextField(
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  hintText: "新規まとめフォルダを作成...",
-                  hintStyle: TextStyle(color: Colors.white24),
-                  prefixIcon: Icon(Icons.add, color: Colors.blueAccent),
-                ),
-                onChanged: (val) => newParentName = val,
-              ),
-              const Divider(color: Colors.white10),
-              // 既存のまとめフォルダ一覧（All Songs 以外）
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: parentFolderMap.keys
-                      .where((key) => key != "All Songs")
-                      .map(
-                        (target) => ListTile(
-                          leading: const Icon(
-                            Icons.folder_special,
-                            color: Colors.blue,
-                          ),
-                          title: Text(
-                            target,
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _executeAssign(target);
-                          },
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("キャンセル", style: TextStyle(color: Colors.white54)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (newParentName.isNotEmpty) {
-                Navigator.pop(context);
-                _executeAssign(newParentName);
-              }
-            },
-            child: const Text("新規作成して追加"),
-          ),
-        ],
-      ),
+      parentFolderMap: parentFolderMap,
+      onTargetSelected: _executeAssign,
+      onCreateAndAssign: _executeAssign,
     );
   }
 

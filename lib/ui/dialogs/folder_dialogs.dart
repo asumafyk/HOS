@@ -7,7 +7,7 @@ import '../theme/app_theme.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class FolderDialogs {
-  // 名前が空文字の際の警告用関数
+  //  --- 名前が空文字の際の警告用ダイアログ ---
   static void showEmptyError(BuildContext context) {
     showDialog(
       context: context,
@@ -31,7 +31,7 @@ class FolderDialogs {
     );
   }
 
-  // 名前が重複時の警告用サブ・ダイアログ
+  // --- 名前が重複時の警告用サブ・ダイアログ ---
   static void showDuplicateWarning(BuildContext context, String name) {
     showDialog(
       context: context,
@@ -55,7 +55,7 @@ class FolderDialogs {
     );
   }
 
-  // 削除するときの安全バー(加えて、実際の削除を担当する)関数
+  // --- 削除するときの安全バー(加えて、実際の削除を担当する)ダイアログ ---
   static void confirmDelete({
     required BuildContext context,
     required String name,
@@ -117,7 +117,7 @@ class FolderDialogs {
     );
   }
 
-  // 一括削除時の確認
+  // --- 一括削除時の確認 ---
   static void showBatchDeleteConfirm({
     required BuildContext context,
     required int count,
@@ -145,7 +145,7 @@ class FolderDialogs {
     );
   }
 
-  // 権限エラーダイアログ
+  // --- 権限エラーダイアログ ---
   static void showPermissionDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -175,6 +175,86 @@ class FolderDialogs {
               await openAppSettings();
             },
             child: const Text("端末の設定を開く"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- All Songs 内のフォルダの「仕分け先を選択」するダイアログ ---
+  static void showAssignSelectorDialog({
+    required BuildContext context,
+    required Map<String, List<String>> parentFolderMap,
+    required Function(String) onTargetSelected, // 移動先を決定した時の報告用
+    required Function(String) onCreateAndAssign, // 移動先を新規作成しての追加用
+  }) {
+    String newParentName = "";
+    final theme = AppTheme(context);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: theme.sequenceBackground,
+        title: const Text(
+          "仕分け先を選択",
+          style: TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 新規作成用の入力欄
+              TextField(
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: "新規まとめフォルダ...",
+                  hintStyle: TextStyle(color: Colors.white24),
+                ),
+                onChanged: (val) => newParentName = val,
+              ),
+              const Divider(color: Colors.white10),
+              // 既存のまとめフォルダ一覧（All Songs 以外）
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: parentFolderMap.keys
+                      .where((key) => key != "All Songs")
+                      .map(
+                        (target) => ListTile(
+                          leading: const Icon(
+                            Icons.folder_special,
+                            color: Colors.blue,
+                          ),
+                          title: Text(
+                            target,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            onTargetSelected(target);
+                          },
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("キャンセル", style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (newParentName.isNotEmpty) {
+                Navigator.pop(context);
+                onCreateAndAssign(newParentName);
+              }
+            },
+            child: const Text("新規作成して追加"),
           ),
         ],
       ),
