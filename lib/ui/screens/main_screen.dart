@@ -866,82 +866,36 @@ class _MusicScannerState extends State<MusicScanner> {
     自作まとめフォルダにAll Songs 内のフォルダを追加する関数
   */
   void _showAddFoldersToSummaryDialog() {
-    // まだ現在のまとめに入っていないフォルダを抽出
-    List<String> allFolders = folderMap.keys.toList();
-    List<String> available = allFolders;
-
-    Set<String> localSelected = {}; // このダイアログ内での選択用
-
-    showDialog(
+    FolderDialogs.showAddFoldersToSummaryDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppTheme(context).sequenceBackground,
-          title: Text(
-            "$currentParentName に追加",
-            style: const TextStyle(color: Colors.white, fontSize: 16),
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 400,
-            child: ListView.builder(
-              itemCount: available.length,
-              itemBuilder: (context, index) {
-                String physicalName = available[index];
-                String displayName =
-                    folderNicknames[physicalName] ?? physicalName;
-                return CheckboxListTile(
-                  title: Text(
-                    displayName,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  value: localSelected.contains(physicalName),
-                  onChanged: (val) => setDialogState(
-                    () => val!
-                        ? localSelected.add(physicalName)
-                        : localSelected.remove(physicalName),
-                  ),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("キャンセル"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  // executeAssign()内と同じような処理
-                  for (var physicalName in localSelected) {
-                    // 現在のまとめフォルダ内で被らないニックネームを生成（_2, _3付与）
-                    String newNickname = _generateUniqueNicknameInParent(
-                      physicalName,
-                      currentParentName!,
-                    );
-                    // 内部用の固有IDを生成（物理名を含めることで由来を保持）
-                    String uniqueId =
-                        "VIRTUAL_${DateTime.now().microsecondsSinceEpoch}_$physicalName";
+      currentParentName: currentParentName!,
+      availableFolders: folderMap.keys.toList(),
+      folderNicknames: folderNicknames,
+      onFoldersAdded: (selectedList) {
+        setState(() {
+          // executeAssign()内と同じような処理
+          for (var physicalName in selectedList) {
+            // 現在のまとめフォルダ内で被らないニックネームを生成（_2, _3付与）
+            String newNickname = _generateUniqueNicknameInParent(
+              physicalName,
+              currentParentName!,
+            );
+            // 内部用の固有IDを生成（物理名を含めることで由来を保持）
+            String uniqueId =
+                "VIRTUAL_${DateTime.now().microsecondsSinceEpoch}_$physicalName";
 
-                    // 曲データのコピー
-                    List<SongModel> songs = folderMap[physicalName] ?? [];
-                    folderMap[uniqueId] = List<SongModel>.from(songs);
+            // 曲データのコピー
+            List<SongModel> songs = folderMap[physicalName] ?? [];
+            folderMap[uniqueId] = List<SongModel>.from(songs);
 
-                    // ニックネームの登録
-                    folderNicknames[uniqueId] = newNickname;
-                    // 現在のまとめフォルダ（親）のリストに仮想IDを登録
-                    parentFolderMap[currentParentName]!.add(uniqueId);
-                  }
-                });
-                _saveAllSettings();
-                Navigator.pop(context);
-              },
-              child: const Text("追加実行"),
-            ),
-          ],
-        ),
-      ),
+            // ニックネームの登録
+            folderNicknames[uniqueId] = newNickname;
+            // 現在のまとめフォルダ（親）のリストに仮想IDを登録
+            parentFolderMap[currentParentName]!.add(uniqueId);
+          }
+        });
+        _saveAllSettings();
+      },
     );
   }
 

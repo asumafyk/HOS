@@ -260,4 +260,67 @@ class FolderDialogs {
       ),
     );
   }
+
+  // --- 仕分け先を決定した後に、追加を実行する確認ダイアログ ---
+  static void showAddFoldersToSummaryDialog({
+    required BuildContext context,
+    required String currentParentName,
+    required List<String> availableFolders,
+    required Map<String, String> folderNicknames,
+    required Function(Set<String>) onFoldersAdded,
+  }) {
+    Set<String> localSelected = {};
+    final theme = AppTheme(context);
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: theme.sequenceBackground,
+          title: Text(
+            "$currentParentName に追加",
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: ListView.builder(
+              itemCount: availableFolders.length,
+              itemBuilder: (context, index) {
+                String physicalName = availableFolders[index];
+                String displayName =
+                    folderNicknames[physicalName] ?? physicalName;
+                return CheckboxListTile(
+                  title: Text(
+                    displayName,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  value: localSelected.contains(physicalName),
+                  onChanged: (val) => setDialogState(
+                    () => val!
+                        ? localSelected.add(physicalName)
+                        : localSelected.remove(physicalName),
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("キャンセル"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                onFoldersAdded(localSelected);
+              },
+              child: const Text("追加実行"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+
+//
