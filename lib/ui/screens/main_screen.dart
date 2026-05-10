@@ -14,13 +14,14 @@ import 'package:my_first_app/ui/widgets/main_content_list.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:permission_handler/permission_handler.dart';
 // 自前ファイル
-import 'package:my_first_app/core/constants.dart';
-import 'package:my_first_app/ui/theme/app_theme.dart';
+import '../../core/constants.dart';
+import '../theme/app_theme.dart';
 import '../../service/audio_player_service.dart';
 import '../widgets/player_panel.dart'; // 再生パネル
 import '../widgets/app_drawer.dart';
 import '../widgets/list_header.dart';
 import '../widgets/header_menu.dart';
+import '../../logic/playback_controller.dart';
 
 // 定数や設定だけを書く場所「看板(Widget)」
 class MusicScanner extends StatefulWidget {
@@ -967,7 +968,7 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
-    一括削除ロジックの関数
+    まとめフォルダ一括削除ロジックの関数
   */
   void _executeBulkDelete() {
     setState(() {
@@ -1002,7 +1003,7 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
-    まとめから特定のフォルダを外す際の確認用関数
+    まとめ内から特定のフォルダを外す際の確認用関数
   */
   void _confirmRemoveFromSummary(String folderId) {
     setState(() {
@@ -1555,132 +1556,36 @@ class _MusicScannerState extends State<MusicScanner> {
 
   /*
     次または前の曲を「フォルダ移動も含めて」計算し、再生すべき曲を返す関数
-    isNext: trueなら次、falseなら前
   */
-  SongModel? _getTargetSong(bool isNext, {bool isAutomatic = false}) {
-    // 再生リストが空、または現在選択されている曲がない場合は中断
-    if (playlistSongs.isEmpty || selectSong == null) return null;
-
-    int currentSongIndex = playlistSongs.indexOf(selectSong!);
-    if (currentSongIndex == -1) return null;
-
-    // グローバルシャッフル（跨ぎONのシャッフルモード）
-    if (isFolderBridgeEnabled && playMode == 3) {
-      List<String> currentLoopList = (playingParentName == "All Songs")
-          ? folderSequence
-          : (parentFolderMap[playingParentName] ?? []);
-      if (currentLoopList.isNotEmpty) {
-        // 対象フォルダ群からランダムに1つ選択
-        String randomFolderName =
-            currentLoopList[DateTime.now().millisecond %
-                currentLoopList.length];
-        List<SongModel> randomFolderSongs = folderMap[randomFolderName] ?? [];
-        if (randomFolderSongs.isNotEmpty) {
-          // そのフォルダの中からランダムに1曲選択
-          SongModel target =
-              randomFolderSongs[DateTime.now().microsecond %
-                  randomFolderSongs.length];
-          // フォルダが移動する場合は状態を更新
-          if (playingFolderName != randomFolderName) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              setState(() {
-                playingFolderName = randomFolderName;
-                playlistSongs = randomFolderSongs;
-                if (currentFolderName != null) {
-                  currentFolderName = randomFolderName;
-                  displayedSongs = randomFolderSongs;
-                }
-              });
-            });
-          }
-          return target;
-        }
-      }
-    }
-
-    // 同一フォルダ内でのインデックス計算（通常）
-    int targetIndex = isNext ? (currentSongIndex + 1) : (currentSongIndex - 1);
-
-    // シャッフルモードの次曲計算（跨ぎOFFの時）
-    if (!isFolderBridgeEnabled && isNext && playMode == 3) {
-      targetIndex =
-          (currentSongIndex +
-              1 +
-              (DateTime.now().millisecond % (playlistSongs.length - 1))) %
-          playlistSongs.length;
-    }
-
-    // フォルダの境界を越えたかどうかの判定
-    bool isOutOfBounds = isNext
-        ? (targetIndex >= playlistSongs.length)
-        : (targetIndex < 0);
-
-    // ---以下フォルダの選択--- //
-
-    if (isOutOfBounds) {
-      // 跨ぎが無効、または個別ループ設定なら、今のフォルダ内でループ(手動)
-      if (!isFolderBridgeEnabled || playMode == 2) {
-        return playlistSongs[isNext ? 0 : playlistSongs.length - 1];
-      }
-      // 再生順を決定する「LoopList」の作成
-      List<String> currentLoopList;
-      if (currentParentName == "All Songs") {
-        // All Songs 階層では「シーケンス設定」の名簿を使う
-        currentLoopList = folderSequence;
-      } else {
-        // 自作まとめ階層では、そのフォルダに入っている並び順をそのまま使う
-        currentLoopList = parentFolderMap[playingParentName] ?? [];
-      }
-
-      // 目録の中で「今再生しているフォルダ」が何番目にあるか探す
-      int currentFolderIndex = currentLoopList.indexOf(playingFolderName ?? "");
-
-      // 目録の中の今のフォルダが存在する場合のみ、隣のフォルダへの移動を試みる
-      if (currentFolderIndex != -1) {
-        int targetFolderIndex = isNext
-            ? currentFolderIndex + 1
-            : currentFolderIndex - 1;
-        // 目録の端（最初または最後）に到達した場合のループ処理
-        if (targetFolderIndex < 0 ||
-            targetFolderIndex >= currentLoopList.length) {
-          if (playMode == 1 || isAutomatic) {
-            // 全曲リピート設定(または手動の1曲リピート・順次再生)なら、目録の反対側の端に戻る
-            targetFolderIndex = isNext ? 0 : currentLoopList.length - 1;
-          } else {
-            // 順次再生かつフォルダが最後なら、止まる
-            return null;
-          }
-        }
-        // 移動先のフォルダ名を取得
-        String targetFolderName = currentLoopList[targetFolderIndex];
-        List<SongModel> nextSongs = folderMap[targetFolderName] ?? [];
-        // 次のフォルダに曲が入っていれば、状態を更新して移動
-        if (nextSongs.isNotEmpty) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            setState(() {
-              playingFolderName = targetFolderName; // 再生中リストを更新
-              playlistSongs = nextSongs; // 再生リストを入替え
-              // ユーザがフォルダ画面を開いているなら、表示も追従させる
-              if (currentFolderName != null) {
-                currentFolderName = targetFolderName;
-                displayedSongs = nextSongs;
-              }
-            });
+  SongModel? _calculateTarget(bool isNext, {bool isAutomatic = false}) {
+    return PlaybackController.getTargetSong(
+      isNext: isNext, // trueなら次、falseなら前
+      isAutomatic: isAutomatic,
+      playlistSongs: playlistSongs,
+      selectSong: selectSong,
+      isFolderBridgeEnabled: isFolderBridgeEnabled,
+      playMode: playMode,
+      playingFolderName: playingFolderName,
+      playingParentName: playingParentName,
+      folderSequence: folderSequence,
+      parentFolderMap: parentFolderMap,
+      folderMap: folderMap,
+      // フォルダが移動した場合の画面更新処理
+      onFolderChanged: (nextFolderName, nextSongs) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            playingFolderName = nextFolderName; // 再生中リストを更新
+            playlistSongs = nextSongs; // 再生リストを入替え
+            // ユーザがフォルダ画面を開いているなら、表示も追従させる
+            if (currentFolderName != null) {
+              currentFolderName = nextFolderName;
+              displayedSongs = nextSongs;
+            }
           });
-          // 次のフォルダの「最初の曲」または「最後の曲」を返す
-          return nextSongs[isNext ? 0 : nextSongs.length - 1];
-        }
-      }
-      // 目録外だった場合や次のフォルダが空だった場合は、今のフォルダ内でループ
-      if (!isAutomatic || playMode == 1) {
-        return playlistSongs[isNext ? 0 : playlistSongs.length - 1];
-      }
-      return null;
-    }
-    // 境界を越えていない場合は、そのまま同じリスト内の曲を返す
-    return playlistSongs[targetIndex];
+        });
+      },
+    );
   }
 
   /* 
@@ -1693,7 +1598,7 @@ class _MusicScannerState extends State<MusicScanner> {
       return;
     }
     // 次を再生する
-    _executePlay(_getTargetSong(true, isAutomatic: isAutomatic));
+    _executePlay(_calculateTarget(true, isAutomatic: isAutomatic));
   }
 
   /*
@@ -1701,7 +1606,7 @@ class _MusicScannerState extends State<MusicScanner> {
   */
   void playPreviousSong() {
     // 前を再生する
-    _executePlay(_getTargetSong(false, isAutomatic: false));
+    _executePlay(_calculateTarget(false, isAutomatic: false));
   }
 
   /*
@@ -1712,7 +1617,7 @@ class _MusicScannerState extends State<MusicScanner> {
       setState(() {
         selectSong = target;
         status = "play";
-        // フォルダを跨いだ場合、playlistSongsは_getTargetSong内で更新済み
+        // フォルダを跨いだ場合、playlistSongsは_calculateTarget内で更新済み
       });
       _audioService.play(target.data);
       // 曲が切り替わった（＝フォルダが変わった可能性がある）時だけ

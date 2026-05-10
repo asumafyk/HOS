@@ -1,5 +1,6 @@
 /* * ファイル名: folder_dialogs.dart
- * 役割: フォルダ操作に関連するダイアログ（新規作成、名前変更、エラー警告）
+ * 役割: フォルダ操作に関連するダイアログ
+ * (新規作成・名前変更・削除・空文字・重複・権限エラー警告...)
  */
 
 import 'package:flutter/material.dart';
@@ -353,6 +354,7 @@ class FolderDialogs {
               String inputName = controller.text.trim(); // 空白を除去
               // 空文字チェック
               if (inputName.isEmpty) {
+                controller.clear();
                 FolderDialogs.showEmptyError(context);
                 return;
               }
