@@ -321,6 +321,59 @@ class FolderDialogs {
       ),
     );
   }
-}
 
-//
+  // --- まとめフォルダ一覧・まとめフォルダ内に空フォルダを追加する際のダイアログ ---
+  static void showCreateFolderDialog({
+    required BuildContext context,
+    required String title,
+    required String hintText,
+    required bool Function(String) onValidate, // 重複チェックなどのバリデーション
+    required Function(String) onConfirm, // 決定時の処理
+  }) {
+    TextEditingController controller = TextEditingController();
+    final theme = AppTheme(context);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: theme.exitBackground,
+        title: Text(title, style: const TextStyle(fontSize: 18)),
+        content: TextField(
+          controller: controller,
+          autofocus: true, // ダイアログを開いた瞬間にキーボードを出す
+          decoration: InputDecoration(hintText: hintText),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("キャンセル"),
+          ),
+          TextButton(
+            onPressed: () {
+              String inputName = controller.text.trim(); // 空白を除去
+              // 空文字チェック
+              if (inputName.isEmpty) {
+                FolderDialogs.showEmptyError(context);
+                return;
+              }
+              // 重複チェック（各階層に合わせて）
+              if (!onValidate(inputName)) {
+                // 既に同じ名前が存在する場合：警告を出して作成させない
+                FolderDialogs.showDuplicateWarning(context, inputName);
+                // 入力欄の入力された文字をすべて「選択状態」にする
+                controller.selection = TextSelection(
+                  baseOffset: 0,
+                  extentOffset: controller.text.length,
+                );
+                return;
+              }
+              Navigator.pop(context);
+              onConfirm(inputName);
+            },
+            child: const Text("確定"),
+          ),
+        ],
+      ),
+    );
+  }
+}

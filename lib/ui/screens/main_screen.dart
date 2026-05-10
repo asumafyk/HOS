@@ -579,65 +579,20 @@ class _MusicScannerState extends State<MusicScanner> {
     上位フォルダ作成用（まとめフォルダ新規作成）の関数
   */
   void _showAddParentFolderDialog() {
-    TextEditingController controller = TextEditingController();
-    showDialog(
+    FolderDialogs.showCreateFolderDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme(context).exitBackground,
-        title: const SizedBox(
-          width: double.infinity,
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text("新規まとめ用フォルダ"),
-          ),
-        ),
-        content: TextField(
-          controller: controller,
-          autofocus: true, // ダイアログを開いた瞬間にキーボードを出す
-          decoration: const InputDecoration(hintText: "フォルダ名を入力"),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("キャンセル"),
-          ),
-          TextButton(
-            onPressed: () {
-              String inputName = controller.text.trim(); // 空白を除去
-              // 0文字チェック
-              if (inputName.isEmpty) {
-                // 入力欄をすべて消去
-                controller.clear();
-                FolderDialogs.showEmptyError(context);
-                return;
-              }
-              if (inputName.isNotEmpty) {
-                // 重複チェック回路
-                if (parentFolderMap.containsKey(inputName)) {
-                  // 既に同じ名前が存在する場合：警告を出して作成させない
-                  FolderDialogs.showDuplicateWarning(context, inputName);
-                  // 入力欄の入力された文字をすべて「選択状態」にする
-                  controller.selection = TextSelection(
-                    baseOffset: 0,
-                    extentOffset: controller.text.length,
-                  );
-                  return; // ここで処理を中断
-                }
-                if (!mounted) return;
-                // すべてクリアなら作成
-                setState(() {
-                  parentFolderMap[inputName] = [];
-                  parentFolderOrder.add(inputName);
-                });
-                _saveAllSettings();
-                Navigator.pop(context);
-              }
-            },
-            child: const Text("作成"),
-          ),
-        ],
-      ),
+      title: "新規まとめフォルダの作成",
+      hintText: "まとめフォルダ名を入力してください",
+      onValidate: (name) => !parentFolderMap.containsKey(name),
+      onConfirm: (name) {
+        if (!mounted) return;
+        // すべてクリアなら作成
+        setState(() {
+          parentFolderMap[name] = [];
+          parentFolderOrder.add(name);
+        });
+        _saveAllSettings();
+      },
     );
   }
 
@@ -656,7 +611,7 @@ class _MusicScannerState extends State<MusicScanner> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(hintText: "新しい名前を入力"),
+          decoration: const InputDecoration(hintText: "新しい名前を入力してください"),
         ),
         actions: [
           TextButton(
@@ -810,60 +765,28 @@ class _MusicScannerState extends State<MusicScanner> {
     まとめフォルダ内に、空のフォルダを作成する関数
   */
   void _showCreateVirtualFolderDialog() {
-    TextEditingController controller = TextEditingController();
-    showDialog(
+    FolderDialogs.showCreateFolderDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme(context).exitBackground,
-        title: const Text("空フォルダの作成"),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: "フォルダ名を入力してください"),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("キャンセル"),
-          ),
-          TextButton(
-            onPressed: () {
-              String name = controller.text.trim();
-              // 空文字チェック
-              if (name.isEmpty) {
-                controller.clear();
-                FolderDialogs.showEmptyError(context);
-                return;
-              }
-              // 重複チェック
-              bool isDuplicate = folderMap.keys.any(
-                (k) => (folderNicknames[k] ?? k) == name,
-              );
-              if (isDuplicate) {
-                FolderDialogs.showDuplicateWarning(context, name);
-                return;
-              }
-
-              setState(() {
-                // 実体リスト(folderaMap)に空のリストとして登録
-                String uniqueKey =
-                    "VIRTUAL_${DateTime.now().millisecondsSinceEpoch}";
-                folderMap[uniqueKey] = [];
-                folderNicknames[uniqueKey] = name; // ニックネームとして登録
-                parentFolderMap[currentParentName]!.add(uniqueKey);
-              });
-              _saveAllSettings();
-              Navigator.pop(context);
-            },
-            child: const Text("作成"),
-          ),
-        ],
-      ),
+      title: "空フォルダの作成",
+      hintText: "フォルダ名を入力してください",
+      // 全体のフォルダ名との重複チェック
+      onValidate: (name) =>
+          !folderMap.keys.any((k) => (folderNicknames[k] ?? k) == name),
+      onConfirm: (name) {
+        setState(() {
+          // 実体リスト(folderaMap)に空のリストとして登録
+          String uniqueKey = "VIRTUAL_${DateTime.now().millisecondsSinceEpoch}";
+          folderMap[uniqueKey] = [];
+          folderNicknames[uniqueKey] = name; // ニックネームとして登録
+          parentFolderMap[currentParentName]!.add(uniqueKey);
+        });
+        _saveAllSettings();
+      },
     );
   }
 
   /*
-    自作まとめフォルダにAll Songs 内のフォルダを追加する関数
+    自作まとめフォルダにAll Songs からフォルダを追加する関数
   */
   void _showAddFoldersToSummaryDialog() {
     FolderDialogs.showAddFoldersToSummaryDialog(
@@ -938,7 +861,7 @@ class _MusicScannerState extends State<MusicScanner> {
               autofocus: true,
               decoration: const InputDecoration(
                 labelText: "表示名",
-                hintText: "新しい名前を入力",
+                hintText: "新しい名前を入力してください",
               ),
             ),
           ],
