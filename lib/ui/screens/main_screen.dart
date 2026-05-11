@@ -22,6 +22,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/list_header.dart';
 import '../widgets/header_menu.dart';
 import '../../logic/playback_controller.dart';
+import '../../logic/folder_manager.dart';
 
 // 定数や設定だけを書く場所「看板(Widget)」
 class MusicScanner extends StatefulWidget {
@@ -584,6 +585,7 @@ class _MusicScannerState extends State<MusicScanner> {
       context: context,
       title: "新規まとめフォルダの作成",
       hintText: "まとめフォルダ名を入力してください",
+      // バリデーション：既存のまとめ名と被っていないか
       onValidate: (name) => !parentFolderMap.containsKey(name),
       onConfirm: (name) {
         if (!mounted) return;
@@ -601,87 +603,22 @@ class _MusicScannerState extends State<MusicScanner> {
     上位フォルダの名前を変更する関数
   */
   void _showRenameParentFolderDialog(String oldName) {
-    // 最初から現在の名前を入力状態に
-    TextEditingController controller = TextEditingController(text: oldName);
-
-    showDialog(
+    FolderDialogs.showCreateFolderDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme(context).exitBackground,
-        title: const Text("まとめフォルダ名の変更", style: TextStyle(fontSize: 16)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: "新しい名前を入力してください"),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("キャンセル"),
-          ),
-          TextButton(
-            onPressed: () {
-              String newName = controller.text.trim();
-              // 0文字チェック
-              if (newName.isEmpty) {
-                controller.clear(); // 空文字しかない場合は入力欄を消去
-                FolderDialogs.showEmptyError(context);
-                return;
-              }
-              // 何も変わって何ならそのまま閉じる
-              if (newName == oldName) {
-                Navigator.pop(context);
-                return;
-              }
-              if (newName.isNotEmpty) {
-                // 重複チェック
-                if (parentFolderMap.containsKey(newName)) {
-                  FolderDialogs.showDuplicateWarning(context, newName);
-                  // 入力欄の入力された文字をすべて「選択状態」にする
-                  controller.selection = TextSelection(
-                    baseOffset: 0,
-                    extentOffset: controller.text.length,
-                  );
-                  return; // 処理中断
-                }
-                if (!mounted) return;
-                // データ書き換え作業
-                setState(() {
-                  // Mapの書き換え
-                  List<String> contents = parentFolderMap[oldName] ?? [];
-                  parentFolderMap[newName] = contents;
-                  parentFolderMap.remove(oldName);
-                  // 並び順の書き換え
-                  int index = parentFolderOrder.indexOf(oldName);
-                  if (index != -1) {
-                    parentFolderOrder[index] = newName;
-                  }
-                });
-                _saveAllSettings();
-                Navigator.pop(context);
-              }
-            },
-            child: const Text("変更確定"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /*
-     上位フォルダを削除するときの安全バー(加えて、実際の削除を担当する)関数
-  */
-  void _confirmDeleteParentFolder(String name) {
-    FolderDialogs.confirmDelete(
-      context: context,
-      name: name,
-      parentFolderMap: parentFolderMap,
-      folderNicknames: folderNicknames,
-      onConfirm: () {
+      title: "まとめフォルダ名の変更",
+      hintText: "新しい名前を入力",
+      initialText: oldName, // 現在の名前を初期値として渡す
+      // バリデーション：自分以外で名前が被っていないか
+      onValidate: (name) =>
+          name == oldName || !parentFolderMap.containsKey(name),
+      onConfirm: (name) {
+        if (name == oldName) return; // 名前の変更がない状態なら処理終了
         setState(() {
-          parentFolderMap.remove(name);
-          parentFolderOrder.remove(name);
-          isDeleteMode = false;
+          List<String> contents = parentFolderMap[oldName] ?? [];
+          parentFolderMap[name] = contents;
+          parentFolderMap.remove(oldName);
+          int index = parentFolderOrder.indexOf(oldName);
+          if (index != -1) parentFolderOrder[index] = name;
         });
         _saveAllSettings();
       },
@@ -689,7 +626,8 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
-    All Songs 内の各フォルダに対して「移動先を選択」する処理用の関数
+    All Songs 内にて選択した各フォルダに対して
+    「移動先を選択」する処理用の関数
   */
   void _showBatchAssignmentDialog() {
     FolderDialogs.showAssignSelectorDialog(
@@ -699,67 +637,24 @@ class _MusicScannerState extends State<MusicScanner> {
       onCreateAndAssign: _executeAssign,
     );
   }
-
   /*
     上記に対する実際の書き込み処理
   */
   void _executeAssign(String targetParent) {
-    if (!mounted) return;
-
     setState(() {
-      // ターゲットのまとめが存在しなければ作成
-      if (!parentFolderMap.containsKey(targetParent)) {
-        parentFolderMap[targetParent] = [];
-        parentFolderOrder.add(targetParent);
-      }
-
-      for (var physicalName in selectedFolders) {
-        // 固有IDの発行
-        String uniqueId =
-            "VIRTUAL_${DateTime.now().microsecondsSinceEpoch}_$physicalName";
-
-        // 元の physicalName をキーにして、folderMap から曲リストを取得してディープコピー
-        List<SongModel> songs = folderMap[physicalName] ?? [];
-        folderMap[uniqueId] = List<SongModel>.from(songs); // 参照ではなく新しいリストを作成
-
-        // パス一覧を保存
-        virtualFolderPaths[uniqueId] = songs.map((s) => s.data).toList();
-
-        // ニックネームの決定
-        folderNicknames[uniqueId] = _generateUniqueNicknameInParent(
-          physicalName,
-          targetParent,
-        );
-
-        // まとめへの追加
-        parentFolderMap[targetParent]!.add(uniqueId);
-      }
+      FolderManager.executeAssign(
+        targetParent: targetParent,
+        selectedFolders: selectedFolders,
+        parentFolderMap: parentFolderMap,
+        folderMap: folderMap,
+        folderNicknames: folderNicknames,
+        parentFolderOrder: parentFolderOrder,
+        virtualFolderPaths: virtualFolderPaths,
+      );
       _resetModes();
     });
     _saveAllSettings();
-    // ダイアログが開いていれば閉じる（安全策）
-    if (Navigator.canPop(context)) {
-      Navigator.of(context, rootNavigator: true).pop();
-    }
-  }
-
-  /*
-    指定されたまとめフォルダ内で、名前がかぶらないニックネームを生成する関数
-  */
-  String _generateUniqueNicknameInParent(String baseName, String targetParent) {
-    List<String> siblingIds = parentFolderMap[targetParent] ?? [];
-    // 現在そのまとめに入っているフォルダたちの「表示名」をリストアップ
-    List<String> existingNicknames = siblingIds
-        .map((id) => folderNicknames[id] ?? id)
-        .toList();
-    // 被っていなければそのまま返す
-    if (!existingNicknames.contains(baseName)) return baseName;
-    // 被っている場合は、_2, _3 ... と空きを探す
-    int counter = 2;
-    while (existingNicknames.contains("${baseName}_$counter")) {
-      counter++;
-    }
-    return "${baseName}_$counter";
+    scanDevice();
   }
 
   /*
@@ -770,7 +665,7 @@ class _MusicScannerState extends State<MusicScanner> {
       context: context,
       title: "空フォルダの作成",
       hintText: "フォルダ名を入力してください",
-      // 全体のフォルダ名との重複チェック
+      // バリデーション：全フォルダのニックネームと被っていないか
       onValidate: (name) =>
           !folderMap.keys.any((k) => (folderNicknames[k] ?? k) == name),
       onConfirm: (name) {
@@ -787,7 +682,7 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
-    自作まとめフォルダにAll Songs からフォルダを追加する関数
+    自作まとめフォルダにて、All Songs からフォルダを追加する関数
   */
   void _showAddFoldersToSummaryDialog() {
     FolderDialogs.showAddFoldersToSummaryDialog(
@@ -797,26 +692,15 @@ class _MusicScannerState extends State<MusicScanner> {
       folderNicknames: folderNicknames,
       onFoldersAdded: (selectedList) {
         setState(() {
-          // executeAssign()内と同じような処理
-          for (var physicalName in selectedList) {
-            // 現在のまとめフォルダ内で被らないニックネームを生成（_2, _3付与）
-            String newNickname = _generateUniqueNicknameInParent(
-              physicalName,
-              currentParentName!,
-            );
-            // 内部用の固有IDを生成（物理名を含めることで由来を保持）
-            String uniqueId =
-                "VIRTUAL_${DateTime.now().microsecondsSinceEpoch}_$physicalName";
-
-            // 曲データのコピー
-            List<SongModel> songs = folderMap[physicalName] ?? [];
-            folderMap[uniqueId] = List<SongModel>.from(songs);
-
-            // ニックネームの登録
-            folderNicknames[uniqueId] = newNickname;
-            // 現在のまとめフォルダ（親）のリストに仮想IDを登録
-            parentFolderMap[currentParentName]!.add(uniqueId);
-          }
+          FolderManager.executeAssign(
+          targetParent: currentParentName!,
+          selectedFolders: selectedList, // ダイアログで選ばれたリスト
+          parentFolderMap: parentFolderMap,
+          folderMap: folderMap,
+          folderNicknames: folderNicknames,
+          parentFolderOrder: parentFolderOrder,
+          virtualFolderPaths: virtualFolderPaths,
+        );
         });
         _saveAllSettings();
       },
@@ -828,79 +712,26 @@ class _MusicScannerState extends State<MusicScanner> {
   */
   void _showRenamePhysicalFolderDialog(String id) {
     // 現在のニックネーム、無ければ物理名を初期値にする
-    String currentName = folderNicknames[id] ?? id;
-    TextEditingController controller = TextEditingController(text: currentName);
-    // 仮想フォルダかどうかの判定
-    bool isVirtual = id.startsWith("VIRTUAL_");
+    String oldName = folderNicknames[id] ?? id;
 
-    showDialog(
+    FolderDialogs.showCreateFolderDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme(context).exitBackground,
-        title: const Text("名前の変更", style: TextStyle(fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 物理フォルダの場合のみ、元の名前を表示するパーツ
-            if (!isVirtual) ...[
-              Text(
-                "元のフォルダ名:",
-                style: TextStyle(color: Colors.grey, fontSize: 11),
-              ),
-              Text(
-                id, // 物理ID（実際のフォルダ名）を表示
-                style: TextStyle(
-                  color: AppTheme(context).listText.withValues(alpha: 0.7),
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: "表示名",
-                hintText: "新しい名前を入力してください",
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("キャンセル"),
+      title: "表示名の変更",
+      hintText: "新しい名前を入力してください",
+      initialText: oldName,
+      // バリデーション：他のフォルダ名と被っていないか
+      onValidate: (name) =>
+          name == oldName ||
+          !folderMap.keys.any(
+            (k) => k != id && (folderNicknames[k] ?? k) == name,
           ),
-          TextButton(
-            onPressed: () {
-              String newName = controller.text.trim();
-              // 名前が空の場合
-              if (newName.isEmpty) {
-                controller.clear();
-                FolderDialogs.showEmptyError(context);
-                return;
-              }
-              // 重複チェック
-              bool isDuplicate = folderMap.keys.any(
-                (k) => k != id && (folderNicknames[k] ?? k) == newName,
-              );
-              if (isDuplicate) {
-                FolderDialogs.showDuplicateWarning(context, newName);
-                return;
-              }
-
-              setState(() {
-                // 物理名をキーに、新しいニックネームを保存
-                folderNicknames[id] = newName;
-              });
-              _saveAllSettings();
-              Navigator.pop(context);
-            },
-            child: const Text("変更確定"),
-          ),
-        ],
-      ),
+      onConfirm: (name) {
+        if (name == oldName) return; // 名前の変更がない状態なら処理終了
+        setState(() {
+          folderNicknames[id] = name;
+        });
+        _saveAllSettings();
+      },
     );
   }
 
@@ -968,64 +799,28 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
-    まとめフォルダ一括削除ロジックの関数
+    全階層での一括削除（除外）を実行する関数
   */
   void _executeBulkDelete() {
     setState(() {
-      if (currentParentName == null) {
-        // まとめフォルダの一括削除
-        for (var name in selectedFolders) {
-          parentFolderMap.remove(name);
-          parentFolderOrder.remove(name);
-        }
-      } else if (currentFolderName == null) {
-        // まとめ内のフォルダの一括削除
-        for (var folderId in selectedFolders) {
-          parentFolderMap[currentParentName!]?.remove(folderId);
-          // 仮想フォルダなら実体も消す
-          if (folderId.startsWith("VIRTUAL_")) {
-            virtualFolderPaths.remove(folderId);
-            folderNicknames.remove(folderId);
-            folderMap.remove(folderId);
-          }
-        }
-      } else {
-        // 曲の一括除外（仮想フォルダからの削除など）
-        for (var path in selectedSongPaths) {
-          // 現在のフォルダのリストからそのパスを持つ曲を除外
-          folderMap[currentFolderName!]?.removeWhere((s) => s.data == path);
-        }
-      }
+      FolderManager.executeBulkDelete(
+        // 現在の階層に応じて、選択されているIDセットを渡す
+        selectedIds: currentFolderName == null
+            ? selectedFolders
+            : selectedSongPaths,
+        currentParentName: currentParentName,
+        currentFolderName: currentFolderName,
+        parentFolderMap: parentFolderMap,
+        folderMap: folderMap,
+        folderNicknames: folderNicknames,
+        parentFolderOrder: parentFolderOrder,
+        virtualFolderPaths: virtualFolderPaths,
+      );
       // モード解除と選択解除
       _resetModes();
     });
     _saveAllSettings();
-  }
-
-  /*
-    まとめ内から特定のフォルダを外す際の確認用関数
-  */
-  void _confirmRemoveFromSummary(String folderId) {
-    setState(() {
-      // 1. 現在の「まとめ（Parent）」のリストから削除
-      parentFolderMap[currentParentName!]?.remove(folderId);
-
-      // 2. 仮想フォルダの場合、根元の全データを抹消
-      if (folderId.startsWith("VIRTUAL_")) {
-        // パス（中身）のリストから削除
-        virtualFolderPaths.remove(folderId);
-        // ニックネーム設定から削除
-        folderNicknames.remove(folderId);
-        // メモリ上の曲データ実体（Map）から削除
-        folderMap.remove(folderId);
-
-        // 今後実装する「音量比率データ」からもここで削除するようにします
-        // volumeRatios.remove(folderId);
-      }
-    });
-
-    // 3. 変更を保存
-    _saveAllSettings();
+    scanDevice();
   }
 
   /*
@@ -1996,19 +1791,38 @@ class _MusicScannerState extends State<MusicScanner> {
                       },
                       onRenameTap: (item) {
                         // 5. 名前変更タップ時のロジック
+                        final id = item.toString();
                         if (currentParentName == null) {
-                          _showRenameParentFolderDialog(item.toString());
+                          _showRenameParentFolderDialog(id);
                         } else {
-                          _showRenamePhysicalFolderDialog(item.toString());
+                          _showRenamePhysicalFolderDialog(id);
                         }
                       },
                       onDeleteTap: (item) {
                         // 6. 削除タップ時のロジック
-                        if (currentParentName == null) {
-                          _confirmDeleteParentFolder(item.toString());
-                        } else {
-                          _confirmRemoveFromSummary(item.toString());
-                        }
+                        final id = item.toString();
+                        // 個別削除ボタンも「1件選択して一括削除ロジックに投げる」形に統一すると非常にシンプルです
+                        FolderDialogs.confirmDelete(
+                          context: context,
+                          name: folderNicknames[id] ?? id,
+                          parentFolderMap: parentFolderMap,
+                          folderNicknames: folderNicknames,
+                          onConfirm: () {
+                            setState(() {
+                              FolderManager.executeBulkDelete(
+                                selectedIds: {id}, // 1件だけのセットとして渡す
+                                currentParentName: currentParentName,
+                                currentFolderName: currentFolderName,
+                                parentFolderMap: parentFolderMap,
+                                folderMap: folderMap,
+                                folderNicknames: folderNicknames,
+                                parentFolderOrder: parentFolderOrder,
+                                virtualFolderPaths: virtualFolderPaths,
+                              );
+                            });
+                            _saveAllSettings();
+                          },
+                        );
                       },
                     ),
 

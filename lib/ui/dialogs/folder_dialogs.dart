@@ -56,7 +56,7 @@ class FolderDialogs {
     );
   }
 
-  // --- 削除するときの安全バー(加えて、実際の削除を担当する)ダイアログ ---
+  // --- 一件だけを、リストの削除ボタンにて削除するときのダイアログ ---
   static void confirmDelete({
     required BuildContext context,
     required String name,
@@ -118,7 +118,7 @@ class FolderDialogs {
     );
   }
 
-  // --- 一括削除時の確認 ---
+  // --- 一括削除時の確認ダイアログ ---
   static void showBatchDeleteConfirm({
     required BuildContext context,
     required int count,
@@ -324,14 +324,16 @@ class FolderDialogs {
   }
 
   // --- まとめフォルダ一覧・まとめフォルダ内に空フォルダを追加する際のダイアログ ---
+  // --- 名前変更にも使用 ---
   static void showCreateFolderDialog({
     required BuildContext context,
     required String title,
     required String hintText,
+    String? initialText, // 名前変更でも使えるための初期値
     required bool Function(String) onValidate, // 重複チェックなどのバリデーション
     required Function(String) onConfirm, // 決定時の処理
   }) {
-    TextEditingController controller = TextEditingController();
+    TextEditingController controller = TextEditingController(text: initialText);
     final theme = AppTheme(context);
 
     showDialog(
@@ -354,6 +356,7 @@ class FolderDialogs {
               String inputName = controller.text.trim(); // 空白を除去
               // 空文字チェック
               if (inputName.isEmpty) {
+                // 空文字の場合：警告を出し、中身を削除して作成させない
                 controller.clear();
                 FolderDialogs.showEmptyError(context);
                 return;

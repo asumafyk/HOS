@@ -178,6 +178,13 @@ class MusicTile extends StatelessWidget {
         onPressed: onRenameTap,
       );
     }
+    // 削除モード
+    if (isDeleteMode) {
+      return IconButton(
+        icon: const Icon(Icons.delete, color: Colors.red),
+        onPressed: onDeleteTap,
+      );
+    }
     // 通常時かつフォルダ階層でのピン（お気に入り）ボタン
     if (level == ViewLevel.sub) {
       return IconButton(
