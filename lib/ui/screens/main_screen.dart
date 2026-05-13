@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:my_first_app/service/storage_service.dart';
 import 'package:my_first_app/ui/dialogs/folder_dialogs.dart';
+import 'package:my_first_app/ui/dialogs/sequence_dialog.dart';
 import 'package:my_first_app/ui/widgets/bottom_action_bar.dart';
 import 'package:my_first_app/ui/widgets/main_content_list.dart';
 import 'package:on_audio_query/on_audio_query.dart';
@@ -267,7 +268,7 @@ class _MusicScannerState extends State<MusicScanner> {
     _isScanning = true;
 
     try {
-      debugPrint("Start Scanning...");
+      debugPrint("HOS: デバイススキャン開始...");
       // スマホ内のデータベースに曲を要求する（権限がある前提）
       List<SongModel> songs = await _audioQuery.querySongs(
         ignoreCase: true,
@@ -275,7 +276,7 @@ class _MusicScannerState extends State<MusicScanner> {
         orderType: OrderType.ASC_OR_SMALLER, // 昇順（あいうえお順
         uriType: UriType.EXTERNAL, // 外部ストレージ
       );
-      debugPrint("後");
+      debugPrint("HOS: スキャン完了。${songs.length}曲見つかりました。");
 
       // 最終的な地図
       Map<String, List<SongModel>> finalMap = {};
@@ -390,12 +391,18 @@ class _MusicScannerState extends State<MusicScanner> {
       title = folderNicknames[currentFolderName] ?? currentFolderName!;
     }
 
+    // 条件：現在のまとめが "All Songs" かつ、まだフォルダの中に入っていない時
+    bool isAllSongsSummary =
+        (currentParentName == "All Songs" && currentFolderName == null);
+
     return ListHeader(
       title: title,
       isHeaderOpen: isHeaderOpen,
       isTopLevel: currentParentName == null,
       showPinButton:
           currentFolderName != null && currentFolderName != "⭐ お気に入り",
+      showSequenceButton: isAllSongsSummary,
+      onSequenceTap: _showRouteSelector,
       isPinned: favoriteFolders.contains(currentFolderName),
       onHeaderTap: () => setState(() => isHeaderOpen = !isHeaderOpen),
       onBackTap: backToFolders,
@@ -637,6 +644,7 @@ class _MusicScannerState extends State<MusicScanner> {
       onCreateAndAssign: _executeAssign,
     );
   }
+
   /*
     上記に対する実際の書き込み処理
   */
@@ -693,14 +701,14 @@ class _MusicScannerState extends State<MusicScanner> {
       onFoldersAdded: (selectedList) {
         setState(() {
           FolderManager.executeAssign(
-          targetParent: currentParentName!,
-          selectedFolders: selectedList, // ダイアログで選ばれたリスト
-          parentFolderMap: parentFolderMap,
-          folderMap: folderMap,
-          folderNicknames: folderNicknames,
-          parentFolderOrder: parentFolderOrder,
-          virtualFolderPaths: virtualFolderPaths,
-        );
+            targetParent: currentParentName!,
+            selectedFolders: selectedList, // ダイアログで選ばれたリスト
+            parentFolderMap: parentFolderMap,
+            folderMap: folderMap,
+            folderNicknames: folderNicknames,
+            parentFolderOrder: parentFolderOrder,
+            virtualFolderPaths: virtualFolderPaths,
+          );
         });
         _saveAllSettings();
       },
@@ -949,404 +957,17 @@ class _MusicScannerState extends State<MusicScanner> {
     シーケンス設定でのフォルダ選択の関数
   */
   void _showRouteSelector() async {
-    List<String> tempSequence = List.from(folderSequence);
-    // 上段リストの初期高さ
-    double topListHeight = 220.0;
-
-    // 上段のリストを操作するためのリモコン
-    final ScrollController topScrollController = ScrollController();
-
-    // 一番下までスクロールさせる命令関数
-    void scrollToBottom() {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (topScrollController.hasClients) {
-          topScrollController.animateTo(
-            topScrollController.position.maxScrollExtent, // 一番下
-            duration: const Duration(milliseconds: 250), // 0.3秒かけて
-            curve: Curves.easeOut, // 滑らかに
-          );
-        }
-      });
-    }
-
-    await showDialog(
+    SequenceDialog.show(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          dialogUpdater = setDialogState; // 更新役を外部から呼べるようにする
-          List<String> availableFolders = folderMap.keys
-              .where((f) => !tempSequence.contains(f))
-              .toList();
-
-          return AlertDialog(
-            backgroundColor: AppTheme(context).sequenceBackground,
-            titlePadding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-            contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-            actionsPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
-            ),
-            title: Text(
-              "フォルダループ設定",
-              style: TextStyle(
-                color: AppTheme(context).sequenceHeaderText,
-                fontSize: 18,
-              ),
-            ),
-            content: SizedBox(
-              width: double.maxFinite,
-              height: 600,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 4.0), // 下のリストとの間に隙間を作る
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown, // はみ出す時だけ小さくする
-                        alignment: Alignment.center,
-                        child: Text(
-                          "(長押しで曲順を入替え / タップで削除)",
-                          style: TextStyle(
-                            color: AppTheme(context).sequenceText,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    height: topListHeight,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme(context).sequenceTopBackground,
-                        borderRadius: BorderRadius.circular(0), // 枠の角の丸み
-                      ),
-                      child: ReorderableListView(
-                        scrollController: topScrollController, // リモコンを接続
-                        // 持ち上げたときの見た目を定義する装飾ユニット
-                        proxyDecorator: (child, index, animation) {
-                          return AnimatedBuilder(
-                            animation: animation,
-                            builder: (context, child) {
-                              // 持ち上げに合わせて 0.0 から 1.0 に変化する値
-                              final double animValue = Curves.easeInOut
-                                  .transform(animation.value);
-                              // 左にずらす量
-                              final double offsetX = animValue * -10.0;
-                              // 上にずらす量
-                              final double offsetY = animValue * -6.0;
-                              // 影の深さ
-                              final double elevation = animValue * 8.0;
-
-                              return Transform.translate(
-                                offset: Offset(
-                                  offsetX,
-                                  offsetY,
-                                ), // 左上(X,Yをマイナス)へ移動
-                                child: Material(
-                                  elevation: elevation,
-                                  color: Color.lerp(
-                                    Colors.transparent, // 持ち上げ前は、背景色はもとのものに任せる
-                                    AppTheme(
-                                      context,
-                                    ).sequenceTopHaveList, // 持ち上げた際の色
-                                    animValue,
-                                  ), //
-                                  shadowColor: Colors.white.withValues(
-                                    alpha: 0.4,
-                                  ),
-                                  borderRadius: BorderRadius.circular(0),
-                                  child: Opacity(
-                                    opacity: 1.0 - (animValue * 0.1),
-                                    child: child,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: child,
-                          );
-                        },
-                        onReorder: (oldIdx, newIdx) {
-                          setDialogState(() {
-                            if (oldIdx < newIdx) newIdx -= 1;
-                            final item = tempSequence.removeAt(oldIdx);
-                            tempSequence.insert(newIdx, item);
-                          });
-                        },
-                        children: tempSequence.map((folder) {
-                          // 今再生中のフォルダかどうかを判定
-                          final bool isPlaying = folder == playingFolderName;
-
-                          return ReorderableDelayedDragStartListener(
-                            key: ValueKey("seq_$folder"),
-                            index: tempSequence.indexOf(folder),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: Theme(
-                                data: Theme.of(context).copyWith(
-                                  highlightColor: AppTheme(context).flashColor,
-                                ),
-                                child: Ink(
-                                  decoration: BoxDecoration(
-                                    gradient: isPlaying
-                                        ? LinearGradient(
-                                            begin: Alignment.centerLeft,
-                                            end: Alignment.centerRight,
-                                            colors: AppTheme(
-                                              context,
-                                            ).sequenceTopSelectedGradient,
-                                            stops: const [0.0, 0.6, 1.0],
-                                          )
-                                        : null,
-                                    color: isPlaying
-                                        ? null
-                                        : AppTheme(
-                                            context,
-                                          ).sequenceTopBackground,
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: AppTheme(
-                                          context,
-                                        ).sequenceTopBorder, // 線の色
-                                        width: 0.5, // 線の太さ
-                                      ),
-                                    ),
-                                  ),
-                                  child: ListTile(
-                                    dense: true, // 全体の隙間をギュッと凝縮
-                                    visualDensity: const VisualDensity(
-                                      vertical: -2,
-                                    ), // さらに上下の余白を削る（-4まで設定可能）
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 0,
-                                    ), // 余白の微調整
-                                    title: Text(
-                                      folder,
-                                      maxLines: 2, // 上段は最大2行
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        // 再生中なら色を変更
-                                        color: isPlaying
-                                            ? AppTheme(
-                                                context,
-                                              ).sequenceTopSelectedText
-                                            : AppTheme(
-                                                context,
-                                              ).sequenceTopListText,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    trailing: IconButton(
-                                      icon: Icon(
-                                        Icons.remove_circle_outline,
-                                        color: Color.fromARGB(174, 255, 82, 82),
-                                        size: 20,
-                                      ),
-                                      onPressed: () async {
-                                        // タップ時もフラッシュ（瞬き）を挟むとレスポンスが良いです
-                                        await Future.delayed(
-                                          const Duration(milliseconds: 90),
-                                        );
-                                        if (!mounted) return;
-                                        setDialogState(
-                                          () => tempSequence.remove(folder),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ),
-
-                  // 可動式の境界線
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onVerticalDragUpdate: (details) {
-                      setDialogState(() {
-                        // ドラッグ量に合わせて高さを増減（最小800px、最大450pxに制限）
-                        topListHeight += details.delta.dy;
-                        topListHeight = topListHeight.clamp(80.0, 450.0);
-                      });
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      height: 30, // 判定エリアを広めに確保（指で掴みやすくする）
-                      color: Colors.transparent, // 見えないけど触れる「遊び」の部分
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // ベースとなる横線
-                          const Divider(color: Colors.blue, thickness: 1),
-
-                          // 重なる「掴み棒（ハンドル）」
-                          Container(
-                            width: 100,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              borderRadius: BorderRadius.circular(3),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Colors.black54,
-                                  blurRadius: 2,
-                                  offset: Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // 下段のラベル
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 4.0), // 下のリストとの間に隙間を追加
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown, // はみ出す時だけ小さくする
-                        alignment: Alignment.center,
-                        child: Text(
-                          "(フォルダ名をタップしてループに追加)",
-                          style: TextStyle(
-                            color: AppTheme(context).sequenceText,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme(context).sequenceUnderBackground,
-                        borderRadius: BorderRadius.circular(6), // 枠の角の丸み
-                      ),
-                      child: ListView.builder(
-                        itemCount: availableFolders.length,
-                        itemBuilder: (context, index) {
-                          final folder = availableFolders[index];
-                          // 今再生中のフォルダかどうかを判定
-                          final bool isPlaying = folder == playingFolderName;
-
-                          return Material(
-                            color: Colors.transparent,
-                            child: Ink(
-                              decoration: BoxDecoration(
-                                // 再生中
-                                gradient: isPlaying
-                                    ? LinearGradient(
-                                        begin: Alignment.centerLeft,
-                                        end: Alignment.centerRight,
-                                        colors: AppTheme(
-                                          context,
-                                        ).sequenceUnderSelectedeGradient,
-                                        stops: const [0.0, 0.6, 1.0],
-                                      )
-                                    : null,
-                                color: isPlaying
-                                    ? null
-                                    : AppTheme(context).sequenceUnderBackground,
-                                // 下のリストにも仕切り線を追加
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: AppTheme(
-                                      context,
-                                    ).sequenceUnderBorder, // 線の色
-                                    width: 0.5, // 線の太さ
-                                  ),
-                                ),
-                              ),
-                              child: ListTile(
-                                dense: true, // 隙間を狭くする
-                                visualDensity: const VisualDensity(
-                                  vertical: -2,
-                                ), // 上下の余白をさらに削る
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 0,
-                                ), // 余白の微調整
-                                title: Text(
-                                  folder,
-                                  maxLines: 3, // 下段は最大3行
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: isPlaying
-                                        ? AppTheme(
-                                            context,
-                                          ).sequenceUnderSelectedText
-                                        : AppTheme(
-                                            context,
-                                          ).sequenceUnderListText,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                onTap: () async {
-                                  await Future.delayed(
-                                    const Duration(milliseconds: 90),
-                                  );
-                                  if (!mounted) return;
-                                  setDialogState(() {
-                                    tempSequence.add(folder);
-                                  });
-                                  scrollToBottom();
-                                },
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween, // 左右に振り分ける
-                children: [
-                  // 左側：閉じるボタン（保存せずに戻る）
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      "閉じる",
-                      style: TextStyle(color: Colors.lightBlueAccent),
-                    ),
-                  ),
-                  // 右側：保存ボタン（反映して戻る）
-                  ElevatedButton(
-                    onPressed: () async {
-                      await Future.delayed(const Duration(milliseconds: 90));
-                      if (!mounted) return;
-                      setState(() => folderSequence = tempSequence);
-                      _saveAllSettings();
-                      Navigator.pop(context);
-                    },
-                    child: const Text(
-                      "保存",
-                      style: TextStyle(color: Colors.blueAccent),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          );
-        },
-      ),
+      folderSequence: folderSequence,
+      folderMap: folderMap,
+      playingFolderName: playingFolderName,
+      onStateSetterCreated: (setter) => dialogUpdater = setter,
+      onSave: (newSequence) {
+        setState(() => folderSequence = newSequence);
+        _saveAllSettings();
+      },
     );
-    // リモコンを片付ける
-    topScrollController.dispose();
-    // ダイアログが閉じたら、更新役を解除して安全を確保する
-    dialogUpdater = null;
   }
 
   /*
@@ -1521,8 +1142,11 @@ class _MusicScannerState extends State<MusicScanner> {
     HOSの起動シーケンス：読み込みが終わってから権限確認・スキャンに進む
   */
   Future<void> _initializeHOS() async {
+    debugPrint("HOS: 設定の読み込み開始...");
     await _loadAllSettings();
+    debugPrint("HOS: 設定の読み込み完了。権限確認開始...");
     await requestPermission();
+    debugPrint("HOS: 初期化シーケンス完了。");
   }
 
   /*

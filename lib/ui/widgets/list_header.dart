@@ -11,6 +11,8 @@ class ListHeader extends StatelessWidget {
   final bool isTopLevel;
   final bool showPinButton;
   final bool isPinned;
+  final bool showSequenceButton; // シーケンス（ループ）設定ボタンを表示するかどうか
+  final VoidCallback? onSequenceTap; //シーケンスボタンが押された時の処理
   final VoidCallback onHeaderTap;
   final VoidCallback onBackTap;
   final VoidCallback onPinTap;
@@ -23,6 +25,8 @@ class ListHeader extends StatelessWidget {
     required this.isTopLevel,
     required this.showPinButton,
     required this.isPinned,
+    this.showSequenceButton = false, // デフォルトは非表示にする
+    this.onSequenceTap,
     required this.onHeaderTap,
     required this.onBackTap,
     required this.onPinTap,
@@ -94,6 +98,17 @@ class ListHeader extends StatelessWidget {
                   size: 20,
                 ),
 
+                // 右端：ループ設定ボタン (All Songs フォルダ一覧でのみ表示)
+                if (showSequenceButton)
+                  IconButton(
+                    onPressed: onSequenceTap,
+                    icon: const Icon(
+                      Icons.low_priority,
+                      color: Colors.blueAccent,
+                      size: 25,
+                    ),
+                  ),
+
                 // 右端：ピン留めボタン(必要な時のみ)
                 if (showPinButton)
                   IconButton(
@@ -105,7 +120,8 @@ class ListHeader extends StatelessWidget {
                     ),
                     onPressed: onPinTap,
                   )
-                else
+                // どちらのボタンも表示されない時だけスペースを空ける
+                else if (!showSequenceButton) 
                   const SizedBox(width: 35),
               ],
             ),
