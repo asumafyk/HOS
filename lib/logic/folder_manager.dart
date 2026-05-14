@@ -4,9 +4,15 @@
 
 import 'package:on_audio_query/on_audio_query.dart';
 
-class FolderManager {  
+class FolderManager {
+  // 仮想フォルダを管理する内部的な隠しキー
+  static const String virtualMasterKey = "__VIRTUAL_MASTER__";
+
   // --- 名前がかぶらないニックネームを生成 ---
-  static String generateUniqueNickname(String baseName, List<String> existingNames) {
+  static String generateUniqueNickname(
+    String baseName,
+    List<String> existingNames,
+  ) {
     // 被っていなければそのまま返す
     if (!existingNames.contains(baseName)) return baseName;
     // 被っている場合は、_2, _3 ... と空きを探す
@@ -16,7 +22,6 @@ class FolderManager {
     }
     return "${baseName}_$counter";
   }
-
 
   // --- 名前変更ロジック（仮想フォルダ・仮想曲ファイル）---
   static void renameItem({
@@ -50,7 +55,9 @@ class FolderManager {
     folderMap[targetFolderId]!.addAll(targets);
 
     if (isMoveMode && currentFolderName != null) {
-      folderMap[currentFolderName]!.removeWhere((s) => selectedSongPaths.contains(s.data));
+      folderMap[currentFolderName]!.removeWhere(
+        (s) => selectedSongPaths.contains(s.data),
+      );
     }
   }
 
@@ -65,6 +72,11 @@ class FolderManager {
     required List<String> parentFolderOrder,
     required Map<String, List<String>> virtualFolderPaths,
   }) {
+    // マスターリストが存在してなければ作成（Uiには表示しない）
+    if (!parentFolderMap.containsKey(virtualMasterKey)) {
+      parentFolderMap[virtualMasterKey] = [];
+    }
+
     // 新規まとめ作成の場合
     if (!parentFolderMap.containsKey(targetParent)) {
       parentFolderMap[targetParent] = [];
@@ -73,7 +85,8 @@ class FolderManager {
 
     // 選択中の「まとめ」内の表示名を取得して、被らない名前を生成
     List<String> siblingNames = parentFolderMap[targetParent]!
-        .map((id) => folderNicknames[id] ?? id).toList();
+        .map((id) => folderNicknames[id] ?? id)
+        .toList();
 
     for (var physicalName in selectedFolders) {
       String newNickname = generateUniqueNickname(physicalName, siblingNames);
@@ -85,11 +98,15 @@ class FolderManager {
       // 元の physicalName をキーにして、folderMap から曲リストを取得してディープコピー
       List<SongModel> songs = folderMap[physicalName] ?? [];
       folderMap[uniqueId] = List<SongModel>.from(songs);
-      virtualFolderPaths[uniqueId] = songs.map((s) => s.data).toList(); // 参照ではなく新しいリストを作成
-
+      virtualFolderPaths[uniqueId] = songs
+          .map((s) => s.data)
+          .toList(); // 参照ではなく新しいリストを作成
       folderNicknames[uniqueId] = newNickname;
+
       // まとめへの追加
       parentFolderMap[targetParent]!.add(uniqueId);
+      // マスターリストへの追加
+      parentFolderMap[virtualMasterKey]!.add(uniqueId);
     }
   }
 
@@ -107,27 +124,39 @@ class FolderManager {
     // 1. まとめ一覧（最上位）での削除
     if (currentParentName == null) {
       for (var name in selectedIds) {
+        if (name == virtualMasterKey) continue; // マスターリスト自体は消さない
         // まとめフォルダ内の仮想フォルダをクリーンアップ
         List<String> contents = parentFolderMap[name] ?? [];
         for (var id in contents) {
-          if (id.startsWith("VIRTUAL_")) {
-            _purgeVirtualFolder(id, folderMap, folderNicknames, virtualFolderPaths);
-          }
+          // 他のまとめでも使われていないかチェックし、孤立するならパージ
+          _handleVirtualOrphan(
+            id,
+            name,
+            parentFolderMap,
+            folderMap,
+            folderNicknames,
+            virtualFolderPaths,
+          );
         }
         parentFolderMap.remove(name);
         parentFolderOrder.remove(name);
       }
-    } 
+    }
     // 2. まとめ内でのフォルダ削除（除外）
     else if (currentFolderName == null) {
       for (var id in selectedIds) {
-        parentFolderMap[currentParentName]?.remove(id);
         // 仮想フォルダなら実体も消去
-        if (id.startsWith("VIRTUAL_")) {
-          _purgeVirtualFolder(id, folderMap, folderNicknames, virtualFolderPaths);
-        }
+        _handleVirtualOrphan(
+          id,
+          currentParentName,
+          parentFolderMap,
+          folderMap,
+          folderNicknames,
+          virtualFolderPaths,
+        );
+        parentFolderMap[currentParentName]?.remove(id);
       }
-    } 
+    }
     // 3. フォルダ内での曲削除（除外）
     else {
       for (var path in selectedIds) {
@@ -137,12 +166,40 @@ class FolderManager {
     }
   }
 
+  // --- 仮想フォルダがどこからも参照されなくなった場合に実体データも消去する ---
+  static void _handleVirtualOrphan(
+    String id,
+    String fromSummary,
+    Map parentFolderMap,
+    Map folderMap,
+    Map folderNicknames,
+    Map virtualFolderPaths,
+  ) {
+    if (!id.startsWith("VIRTUAL_")) return;
+
+    // マスターリストからも削除
+    parentFolderMap[virtualMasterKey]?.remove(id);
+
+    // 他の「まとめ」に含まれているか確認
+    bool isInOther = parentFolderMap.keys.any(
+      (key) =>
+          key != fromSummary &&
+          key != virtualMasterKey &&
+          (parentFolderMap[key] as List).contains(id),
+    );
+
+    // どこにも属さなくなったなら完全にパージ
+    if (!isInOther) {
+      _purgeVirtualFolder(id, folderMap, folderNicknames, virtualFolderPaths);
+    }
+  }
+
   // --- 仮想フォルダの実体データを完全に抹消する内部関数 ---
   static void _purgeVirtualFolder(
-    String id, 
-    Map<String, List<SongModel>> folderMap, 
-    Map<String, String> folderNicknames,
-    Map<String, List<String>> virtualFolderPaths,
+    String id,
+    Map folderMap,
+    Map folderNicknames,
+    Map virtualFolderPaths,
   ) {
     folderMap.remove(id); // メモリ上の曲データ実体（Map）から削除
     folderNicknames.remove(id); // ニックネーム設定から削除

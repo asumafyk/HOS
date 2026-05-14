@@ -345,11 +345,11 @@ class _MusicScannerState extends State<MusicScanner> {
         setState(() {
           musicFiles = songs; // 全曲データ（再生制御用）
           folderMap = finalMap; // 物理＋仮想が統合された地図
-          parentFolderMap["All Songs"] = finalMap.keys
-              .toList(); // All Songsフォルダを常に全物理フォルダと同期させる
+          // All Songs には「物理フォルダのキー」のみを入れる（仮想フォルダを混ぜない）
+          parentFolderMap["All Songs"] = finalMap.keys.toList();
           // 他の上位フォルダ内に「既に消された物理フォルダ」が残っていたら掃除する（クリーンアップ）
           parentFolderMap.forEach((key, folderList) {
-            if (key != "All Songs") {
+            if (key != "All Songs" && key != FolderManager.virtualMasterKey) {
               folderList.retainWhere(
                 (fName) =>
                     finalMap.containsKey(fName) || fName.startsWith("VIRTUAL_"),
@@ -696,7 +696,8 @@ class _MusicScannerState extends State<MusicScanner> {
     FolderDialogs.showAddFoldersToSummaryDialog(
       context: context,
       currentParentName: currentParentName!,
-      availableFolders: folderMap.keys.toList(),
+      // 追加候補を、物理フォルダのみを管理している All Songs の名簿から取得する
+      availableFolders: parentFolderMap["All Songs"] ?? [], 
       folderNicknames: folderNicknames,
       onFoldersAdded: (selectedList) {
         setState(() {
@@ -1285,17 +1286,13 @@ class _MusicScannerState extends State<MusicScanner> {
                                 : ViewLevel.song),
                       items: currentParentName == null
                           ? parentFolderOrder
+                                .where(
+                                  (k) => k != FolderManager.virtualMasterKey,
+                                )
+                                .toList() // マスターリストは隠す
                           : (currentFolderName == null
-                                ? (currentParentName == "All Songs"
-                                      ? parentFolderMap["All Songs"]!
-                                            .where(
-                                              (k) =>
-                                                  !k.startsWith("VIRTUAL_") &&
-                                                  k != "All Songs",
-                                            )
-                                            .toList()
-                                      : parentFolderMap[currentParentName] ??
-                                            [])
+                                ? (parentFolderMap[currentParentName] ??
+                                      []) // 既にAll Songs は物理のみなのでフィルタ不要
                                 : displayedSongs),
                       // --- 状態の受け渡し ---
                       playingId: (currentFolderName != null)

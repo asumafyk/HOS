@@ -122,7 +122,7 @@ class BottomActionBar extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: onCancel,
         icon: const Icon(Icons.close, size: 18),
-        label: Text("$modeNameモード終了"),
+        label: Text("$modeName 終了"),
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.white70,
           side: const BorderSide(color: Colors.white24),
