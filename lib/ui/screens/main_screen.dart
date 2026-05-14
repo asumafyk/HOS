@@ -346,7 +346,7 @@ class _MusicScannerState extends State<MusicScanner> {
           musicFiles = songs; // 全曲データ（再生制御用）
           folderMap = finalMap; // 物理＋仮想が統合された地図
           // All Songs には「物理フォルダのキー」のみを入れる（仮想フォルダを混ぜない）
-          parentFolderMap["All Songs"] = finalMap.keys.toList();
+          parentFolderMap["All Songs"] = tempMap.keys.toList();
           // 他の上位フォルダ内に「既に消された物理フォルダ」が残っていたら掃除する（クリーンアップ）
           parentFolderMap.forEach((key, folderList) {
             if (key != "All Songs" && key != FolderManager.virtualMasterKey) {
@@ -430,49 +430,70 @@ class _MusicScannerState extends State<MusicScanner> {
 
     if (currentFolderName != null) {
       // --- 最下層（曲一覧）でのメニュー ---
-      items = [
-        HeaderMenuItem(
-          icon: Icons.library_add,
-          label: "All Songs から\n曲を追加",
-          onTap: () {},
-        ), // TODO
-        HeaderMenuItem(
-          icon: Icons.copy,
-          label: "コピー",
-          onTap: () => setState(() {
-            _resetModes();
-            isSelectionMode = true;
-            isCopyMode = true;
-          }),
-        ),
-        HeaderMenuItem(
-          icon: Icons.move_up,
-          label: "移動",
-          onTap: () => setState(() {
-            _resetModes();
-            isSelectionMode = true;
-            isMoveMode = true;
-          }),
-        ),
-        HeaderMenuItem(
-          icon: Icons.delete_sweep,
-          label: "削除",
-          color: Colors.redAccent,
-          onTap: () => setState(() {
-            _resetModes();
-            isDeleteMode = true;
-            isSelectionMode = true;
-          }),
-        ),
-        HeaderMenuItem(
-          icon: Icons.sort,
-          label: "並べ替え\n(再生順も同期)",
-          onTap: () => setState(() {
-            _resetModes();
-            isSortMode = true;
-          }),
-        ),
-      ];
+
+      // All Songs内の物理フォルダ内である場合
+      if (currentParentName == "All Songs") {
+        items = [
+          HeaderMenuItem(
+            icon: Icons.library_add,
+            label: "まとめフォルダ内に\n曲を追加",
+            onTap: () {},
+          ), // TODO
+          HeaderMenuItem(
+            icon: Icons.sort,
+            label: "並べ替え\n(表示順のみ)",
+            onTap: () => setState(() {
+              _resetModes();
+              isSortMode = true;
+            }),
+          ),
+        ];
+      } else {
+        // 仮想フォルダ内（自作まとめ内）：フル編集可能
+        items = [
+          HeaderMenuItem(
+            icon: Icons.library_add,
+            label: "All Songs から\n曲を追加",
+            onTap: () {},
+          ), // TODO
+          HeaderMenuItem(
+            icon: Icons.copy,
+            label: "コピー",
+            onTap: () => setState(() {
+              _resetModes();
+              isSelectionMode = true;
+              isCopyMode = true;
+            }),
+          ),
+          HeaderMenuItem(
+            icon: Icons.move_up,
+            label: "移動",
+            onTap: () => setState(() {
+              _resetModes();
+              isSelectionMode = true;
+              isMoveMode = true;
+            }),
+          ),
+          HeaderMenuItem(
+            icon: Icons.sort,
+            label: "並べ替え\n(再生順も同期)",
+            onTap: () => setState(() {
+              _resetModes();
+              isSortMode = true;
+            }),
+          ),
+          HeaderMenuItem(
+            icon: Icons.delete_sweep,
+            label: "削除",
+            color: Colors.redAccent,
+            onTap: () => setState(() {
+              _resetModes();
+              isDeleteMode = true;
+              isSelectionMode = true;
+            }),
+          ),
+        ];
+      }
     } else if (currentParentName == "All Songs") {
       // --- All Songs でのメニュー
       items = [
@@ -485,6 +506,14 @@ class _MusicScannerState extends State<MusicScanner> {
             isAssignMode = true;
           }),
         ),
+        HeaderMenuItem(
+          icon: Icons.rule_rounded, // TODO変更
+          label: "フォルダの表示・非表示\nの切り替え",
+          onTap: () => setState(() {
+            _resetModes();
+            isSelectionMode = true;
+          }), // 変更の結果はフォルダ追加・シーケンスにも影響（All Songsから一時的に抜くような対応で可能？）
+        ),
       ];
     } else if (currentParentName != null) {
       // --- 中位（自作まとめフォルダ）でのメニュー ---
@@ -493,6 +522,11 @@ class _MusicScannerState extends State<MusicScanner> {
           icon: Icons.add_to_photos_outlined,
           label: "All Songs から\nフォルダ追加",
           onTap: _showAddFoldersToSummaryDialog,
+        ),
+        HeaderMenuItem(
+          icon: Icons.add_to_photos_outlined, // TODO変更
+          label: "別のまとめフォルダ\nからフォルダ追加",
+          onTap: (){}, // TODO 
         ),
         HeaderMenuItem(
           icon: Icons.create_new_folder_outlined,
@@ -697,7 +731,7 @@ class _MusicScannerState extends State<MusicScanner> {
       context: context,
       currentParentName: currentParentName!,
       // 追加候補を、物理フォルダのみを管理している All Songs の名簿から取得する
-      availableFolders: parentFolderMap["All Songs"] ?? [], 
+      availableFolders: parentFolderMap["All Songs"] ?? [],
       folderNicknames: folderNicknames,
       onFoldersAdded: (selectedList) {
         setState(() {

@@ -197,7 +197,7 @@ class FolderDialogs {
       builder: (context) => AlertDialog(
         backgroundColor: theme.sequenceBackground,
         title: const Text(
-          "仕分け先を選択",
+          "コピー先を選択",
           style: TextStyle(color: Colors.white, fontSize: 16),
         ),
         content: SizedBox(
