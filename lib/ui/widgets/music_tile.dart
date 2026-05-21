@@ -102,7 +102,8 @@ class MusicTile extends StatelessWidget {
               vertical: 0,
             ),
             // 左側
-            leading: (isSelectionMode && id != "All Songs" && id != "お気に入り・ピン留め")
+            leading:
+                (isSelectionMode && id != "All Songs" && id != "お気に入り・ピン留め")
                 ? Checkbox(
                     value: isChecked, // チェック状態は呼び出し側から受け取る
                     activeColor: Colors.blueAccent,

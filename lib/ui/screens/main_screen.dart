@@ -109,7 +109,7 @@ class _MusicScannerState extends State<MusicScanner> {
 
   // { "現在のフォルダ": "次のフォルダ" }
   Map<String, String> nextFolderRoute = {};
-  // 単一のシーケンス管理
+  // 単一のシーケンス管理(All Sognsでの)
   List<String> folderSequence = [];
   // その中でループさせたいフォルダのセット
   Set<String> loopingFolders = {};
@@ -264,16 +264,23 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
-    デバイス内から音楽ファイルを探す関数
+    デバイス内から起動時に音楽ファイルを探す関数
   */
   Future<void> scanDevice() async {
-    // 二重実行と権限チェックのガード
-    if (_isScanning || !isPermissionGranted) return;
-    _isScanning = true;
+    // 2重スキャン防止ガード：非同期処理の多重実行によるクラッシュやデータ破壊を防ぐ
+    if (_isScanning) return;
+    setState(() => _isScanning = true);
 
     try {
       debugPrint("HOS: デバイススキャン開始...");
-      // スマホ内のデータベースに曲を要求する（権限がある前提）
+      // ストレージのアクセス権限チェック
+      bool hasPermission = await Permission.audio.isGranted;
+      if (!hasPermission) {
+        hasPermission = await Permission.audio.request().isGranted;
+      }
+      if (!hasPermission) return;
+
+      // スマホ内のデータベースに全音声ファイル・曲ファイルを要求する
       List<SongModel> songs = await _audioQuery.querySongs(
         ignoreCase: true,
         sortType: SongSortType.DISPLAY_NAME, // DISPLAY_NAME（ファイル名）を基準の並び替え
@@ -282,8 +289,14 @@ class _MusicScannerState extends State<MusicScanner> {
       );
       debugPrint("HOS: スキャン完了。${songs.length}曲見つかりました。");
 
-      // 最終的な地図
-      Map<String, List<SongModel>> finalMap = {};
+      // 取得した実体ファイルをメモリ上のマスターリストに保持
+      musicFiles = songs;
+
+      // 実体が消えたデータのクリーンアップ
+      cleanUpDeletedPhysicalData();
+
+      // メモリ上のデータをもとに、フォルダ構造を組み立てる
+      rebuildFolderStructures();
 
       // 仮想フォルダの復元
       virtualFolderPaths.forEach((uniqueId, savedPaths) {
@@ -300,96 +313,146 @@ class _MusicScannerState extends State<MusicScanner> {
         finalMap[uniqueId] = orderedSongs;
       });
 
-      // 一時的な地図を用意
-      Map<String, List<SongModel>> tempMap = {};
-
-      // 物理フォルダの構築
-      for (var song in songs) {
-        // 曲のデータパスからフォルダ名（一番下のディレクトリ名）を抜き出す
-        // 例: /storage/emulated/0/Music/ArtistA/song.mp3 -> ArtistA
-        List<String> pathParts = song.data.split("/");
-        String folderName = pathParts.length > 1
-            ? pathParts[pathParts.length - 2]
-            : "不明なフォルダ";
-        if (!tempMap.containsKey(folderName)) {
-          tempMap[folderName] = [];
-        }
-        tempMap[folderName]!.add(song);
-      }
-      //【最優先】曲のお気に入り「⭐ お気に入り」フォルダを入れる
-      List<SongModel> favList = songs
-          .where((s) => favoriteSongs.contains(s.data))
-          .toList();
-      finalMap["⭐ お気に入り"] = favList;
-
-      //【次点】お気に入り（ピン留め）されたフォルダを先に入れる
-      for (var folderName in tempMap.keys) {
-        if (favoriteFolders.contains(folderName)) {
-          finalMap[folderName] = tempMap[folderName]!;
-        }
-      }
-      //【最後】それ以外の通常フォルダを入れる
-      for (var folderName in tempMap.keys) {
-        // ピン留めされておらず、かつ自動生成名でもないもの
-        if (!favoriteFolders.contains(folderName) && folderName != "⭐ お気に入り") {
-          finalMap[folderName] = tempMap[folderName]!;
-        }
-      }
-      // All Songs フォルダに「物理フォルダ」のみを登録する
-      parentFolderMap["All Songs"] = tempMap.keys.toList();
-
       // 初期シーケンスの準備
       if (folderSequence.isEmpty) {
         folderSequence = finalMap.keys
             .where((k) => k == "⭐ お気に入り" || favoriteFolders.contains(k))
             .toList();
       }
-
-      if (mounted) {
-        setState(() {
-          musicFiles = songs; // 全曲データ（再生制御用）
-          folderMap = finalMap; // 物理＋仮想が統合された地図
-          // All Songs には「物理フォルダのキー」のみを入れる（仮想フォルダを混ぜない）
-          parentFolderMap["All Songs"] = tempMap.keys.toList();
-          // 「お気に入り・ピン留め」フォルダを独立したまとめとして定義
-          List<String> favSummary = ["⭐ お気に入り"];
-          favSummary.addAll(favoriteFolders.toList());
-          parentFolderMap["お気に入り・ピン留め"] = favSummary;
-
-          // 並び順の強制リセット
-          // 常に [お気に入り, All Songs] の順で始まるように並べ替える
-          parentFolderOrder.remove("All Songs");
-          parentFolderOrder.remove("お気に入り・ピン留め");
-
-          parentFolderOrder.insert(0, "お気に入り・ピン留め");
-          parentFolderOrder.insert(1, "All Songs");
-
-          // 他の上位フォルダ内に「既に消された物理フォルダ」が残っていたら掃除する（クリーンアップ）
-          parentFolderMap.forEach((key, folderList) {
-            if (key != "All Songs" &&
-                key != "お気に入り・ピン留め" &&
-                key != FolderManager.virtualMasterKey) {
-              folderList.retainWhere(
-                (fName) =>
-                    finalMap.containsKey(fName) || fName.startsWith("VIRTUAL_"),
-              );
-            }
-          });
-        });
-      }
     } catch (e) {
-      debugPrint("Scan Error: $e"); // エラー補足
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("スキャンに失敗しました。ファイルへのアクセスを確認してください。"),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
+      debugPrint("スキャン中にエラーが発生しました: $e"); // エラー補足
     } finally {
-      _isScanning = false; // 必ず修正フラグを戻す
+      _isScanning = false; // 必ずフラグを戻す
     }
+  }
+
+  /*
+    物理ファイルが消えていた場合の周辺データの自動掃除用関数
+  */
+  void cleanUpDeletedPhysicalData() {
+    // 現在実在するフォルダマップを仮構築
+    Map<String, List<SongModel>> tempMap = {};
+    for (var song in musicFiles) {
+      // 絶対パスから所属フォルダ名を切り出す
+      String? folderPath = song.data.substring(0, song.data.lastIndexOf('/'));
+      String folderName = folderPath.substring(folderPath.lastIndexOf('/') + 1);
+      if (!tempMap.containsKey(folderName)) tempMap[folderName] = [];
+      tempMap[folderName]!.add(song);
+    }
+
+    // 物理削除への自動追従（実体が消えたデータのクリーンアップ）
+    setState(() {
+      // (a) ピン留めリスト(favoriteFolders)から、ストレージに存在しなくなった物理フォルダを自動削除
+      favoriteFolders.retainWhere(
+        (folderName) => tempMap.containsKey(folderName),
+      );
+      // (b) ユーザー作成の仮想フォルダ内から、ストレージに存在しなくなった実体曲を自動除外
+      folderMap.forEach((key, songList) {
+        if (key.startsWith("VIRTUAL_")) {
+          // 今回のスキャンの結果(musicFiles)に今も残っている曲だけを生き残らせる
+          songList.retainWhere(
+            (virtualSong) => musicFiles.any(
+              (actualSong) => actualSong.data == virtualSong.data,
+            ),
+          );
+        }
+      });
+      // (c) 曲のニックネームの実在する曲のパス以外を削除
+      songNicknames.removeWhere(
+        (path, _) => !musicFiles.any((s) => s.data == path),
+      );
+      // (d) フォルダのニックネームを、実在する物理フォルダ・VIRTUAL_フォルダだけを残す
+      folderNicknames.removeWhere(
+        (id, _) => !tempMap.containsKey(id) && !id.startsWith("VIRTUAL_"),
+      );
+      // (e) 最上位の並び順リストの、実在しないフォルダ文字を消す
+      parentFolderOrder.retainWhere(
+        (id) =>
+            id == "お気に入り・ピン留め" ||
+            id == "All Songs" ||
+            tempMap.containsKey(id) ||
+            id.startsWith("VIRTUAL_"),
+      );
+      // (f) フォルダループシーケンス内の実在しないフォルダを再生順から削除
+      folderSequence.retainWhere(
+        (id) => tempMap.containsKey(id) || id == "⭐ お気に入り",
+      );
+    });
+  }
+
+  /*
+    マップ再構築ロジック用関数
+    メモリ上のデータを並び替えて最新の状態にする（ボタンタップ時などはこれだけを実行）
+  */
+  void rebuildFolderStructures() {
+    setState(() {
+      // 1. musicFiles（前回のスキャン結果）から物理フォルダマップを再生成
+      Map<String, List<SongModel>> tempMap = {};
+      for (var song in musicFiles) {
+        // 絶対パスから所属フォルダ名を切り出す
+        String? folderPath = song.data.substring(0, song.data.lastIndexOf('/'));
+        String folderName = folderPath.substring(
+          folderPath.lastIndexOf('/') + 1,
+        );
+        if (!tempMap.containsKey(folderName)) {
+          tempMap[folderName] = [];
+        }
+        tempMap[folderName]!.add(song);
+      }
+
+      // 2. ユーザーが手動で並び替えた「仮想フォルダ内の固有の曲順」を復元維持する
+      // (保存されたパスリスト　virtualFolderPaths の順序に SongModel を並び替えてつめなおす)
+      virtualFolderPaths.forEach((uniqueId, savedPaths) {
+        if (folderMap.containsKey(uniqueId)) {
+          List<SongModel> currentVirtualSongs = folderMap[uniqueId] ?? [];
+          List<SongModel> orderedSongs = [];
+
+          for (String path in savedPaths) {
+            final found = currentVirtualSongs.where((s) => s.data == path);
+            if (found.isNotEmpty) {
+              orderedSongs.add(found.first);
+            }
+          }
+          folderMap[uniqueId] = orderedSongs;
+        }
+      });
+
+      // 3. 「⭐ お気に入り」仮想フォルダの中身を favoriteSongs を基に再構築
+      // (お気に入りに入っている曲の実体がストレージから消えていた場合も、ここで自動的に除外されます)
+      tempMap["⭐ お気に入り"] = musicFiles
+          .where((s) => favoriteSongs.contains(s.data))
+          .toList();
+
+      // 4. 既存の folderMap から「物理フォルダ」と「⭐ お気に入り」を一旦リフレッシュ
+      // (ユーザーが作った仮想フォルダ VIRTUAL_ は消さずにそのまま残します)
+      folderMap.removeWhere(
+        (key, _) => !key.startsWith("VIRTUAL_") && key != "⭐ お気に入り",
+      );
+      tempMap.addAll(tempMap);
+
+      // 5. システムまとめフォルダ(All Songs)の構築・更新
+      parentFolderMap["All Songs"] = tempMap.keys
+          .where((k) => k != "⭐ お気に入り")
+          .toList();
+
+      // 6.「お気に入り・ピン留め」まとめフォルダの中身を最新のピン留め順で更新
+      List<String> favSummary = ["⭐ お気に入り"];
+      favSummary.addAll(favoriteFolders.toList());
+      parentFolderMap["お気に入り・ピン留め"] = favSummary;
+
+      // 7. 最上位順序のクリーンアップと固定
+      parentFolderOrder.remove("All Songs");
+      parentFolderOrder.remove("お気に入り・ピン留め");
+
+      parentFolderOrder.insert(0, "お気に入り・ピン留め");
+      parentFolderOrder.insert(1, "All Songs");
+
+      // 8. 初期シーケンス（フォルダループ順）の自動準備
+      //（最初は「⭐ お気に入り」のみをループ対象にする）
+      if (folderSequence.isEmpty) {
+        folderSequence = ["⭐ お気に入り"];
+      }
+    });
   }
 
   /*
@@ -436,7 +499,7 @@ class _MusicScannerState extends State<MusicScanner> {
           }
         });
         _saveAllSettings();
-        scanDevice();
+        rebuildFolderStructures();
       },
       menuContent: _buildHeaderPopDownMenu(), // メニューの中身を渡す
     );
@@ -467,6 +530,20 @@ class _MusicScannerState extends State<MusicScanner> {
               _resetModes();
               isSortMode = true;
             }),
+          ),
+        ];
+      } else if (currentFolderName == "⭐ お気に入り") {
+        items = [
+          HeaderMenuItem(
+            icon: Icons.search,
+            label: "曲検索",
+            color: Colors.white60,
+            onTap: () {
+              // TODO 未来的に検索ロジックをここに実装
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("検索機能は今後のアップデートで実装予定です")),
+              );
+            },
           ),
         ];
       } else {
@@ -735,7 +812,7 @@ class _MusicScannerState extends State<MusicScanner> {
       _resetModes();
     });
     _saveAllSettings();
-    scanDevice();
+    rebuildFolderStructures();
   }
 
   /*
@@ -902,7 +979,7 @@ class _MusicScannerState extends State<MusicScanner> {
       _resetModes();
     });
     _saveAllSettings();
-    scanDevice();
+    rebuildFolderStructures();
   }
 
   /*
@@ -1292,6 +1369,7 @@ class _MusicScannerState extends State<MusicScanner> {
           currentTheme: widget.currentTheme,
           onThemeChanged: widget.onThemeChanged,
           onScanPressed: () {
+            // スキャンを手動で開始
             Navigator.pop(context); // メニューを閉じる
             scanDevice();
           },
@@ -1381,11 +1459,13 @@ class _MusicScannerState extends State<MusicScanner> {
                       isRenameMode: isRenameMode,
                       isDeleteMode: isDeleteMode,
                       //「⭐ お気に入り」という名前のフォルダ自体は、お気に入り(スター)対象から除外する
-                      favoriteIds: currentParentName == "お気に入り・ピン留め"
-                          ? favoriteFolders.where((f) => f != "お気に入り").toSet()
-                          : (currentFolderName == null
+                      favoriteIds: currentFolderName != null
+                          ? favoriteSongs // 曲一覧を表示中なら、常にfavoriteSongsを渡す
+                          : (currentParentName == "お気に入り・ピン留め"
                                 ? favoriteFolders
-                                : favoriteSongs),
+                                      .where((f) => f != "⭐ お気に入り")
+                                      .toSet()
+                                : favoriteFolders),
                       nicknames: currentFolderName == null
                           ? folderNicknames
                           : songNicknames,
@@ -1506,11 +1586,8 @@ class _MusicScannerState extends State<MusicScanner> {
                                 ? favoriteFolders.remove(id)
                                 : favoriteFolders.add(id);
                           }
-                          // scanDevice() を丸ごと呼ぶ代わりに、「お気に入り・ピン留め」のリストだけをここで更新
-                          List<String> favSummary = ["⭐ お気に入り"];
-                          favSummary.addAll(favoriteFolders.toList());
-                          parentFolderMap["お気に入り・ピン留め"] = favSummary;
                         });
+                        rebuildFolderStructures();
                         _saveAllSettings();
                       },
                       onRenameTap: (item) {
