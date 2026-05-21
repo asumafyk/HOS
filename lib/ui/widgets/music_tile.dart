@@ -161,7 +161,7 @@ class MusicTile extends StatelessWidget {
   */
   Widget _buildTrailingWidget(AppTheme theme) {
     // All Songs は移動も削除もできない
-    if (id == "All Songs" || id == "お気に入り・ピン留め") {
+    if (id == "All Songs" || id == "お気に入り・ピン留め" || id == "⭐ お気に入り") {
       return const Icon(Icons.lock_outlined, size: 18, color: Colors.white10);
     }
     // 並べ替えモード
