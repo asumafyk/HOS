@@ -124,7 +124,11 @@ class FolderManager {
     // 1. まとめ一覧（最上位）での削除
     if (currentParentName == null) {
       for (var name in selectedIds) {
-        if (name == virtualMasterKey) continue; // マスターリスト自体は消さない
+        if (name == virtualMasterKey ||
+            name == "All Songs" ||
+            name == "お気に入り・ピン留め") {
+          continue; // マスターリスト自体と、All Songs、お気に入りフォルダは消さない
+        }
         // まとめフォルダ内の仮想フォルダをクリーンアップ
         List<String> contents = parentFolderMap[name] ?? [];
         for (var id in contents) {

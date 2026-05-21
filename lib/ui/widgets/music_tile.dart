@@ -102,7 +102,7 @@ class MusicTile extends StatelessWidget {
               vertical: 0,
             ),
             // 左側
-            leading: (isSelectionMode && id != "All Songs")
+            leading: (isSelectionMode && id != "All Songs" && id != "お気に入り・ピン留め")
                 ? Checkbox(
                     value: isChecked, // チェック状態は呼び出し側から受け取る
                     activeColor: Colors.blueAccent,
@@ -161,7 +161,7 @@ class MusicTile extends StatelessWidget {
   */
   Widget _buildTrailingWidget(AppTheme theme) {
     // All Songs は移動も削除もできない
-    if (id == "All Songs") {
+    if (id == "All Songs" || id == "お気に入り・ピン留め") {
       return const Icon(Icons.lock_outlined, size: 18, color: Colors.white10);
     }
     // 並べ替えモード

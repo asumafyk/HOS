@@ -246,7 +246,11 @@ class _MusicScannerState extends State<MusicScanner> {
       // 初回起動時などでデータが空、またはAll Songsがない場合の初期化
       if (parentFolderMap.isEmpty ||
           !parentFolderMap.containsKey("All Songs")) {
-        parentFolderMap = {"All Songs": [], "好きな曲の入ったフォルダをまとめよう！": []};
+        parentFolderMap = {
+          "お気に入り・ピン留め": [],
+          "All Songs": [],
+          "好きな曲の入ったフォルダをまとめよう！": [],
+        };
       }
 
       // Mapにあるのにリストにないフォルダ（新規追加分など）を補充
@@ -347,9 +351,24 @@ class _MusicScannerState extends State<MusicScanner> {
           folderMap = finalMap; // 物理＋仮想が統合された地図
           // All Songs には「物理フォルダのキー」のみを入れる（仮想フォルダを混ぜない）
           parentFolderMap["All Songs"] = tempMap.keys.toList();
+          // 「お気に入り・ピン留め」フォルダを独立したまとめとして定義
+          List<String> favSummary = ["⭐ お気に入り"];
+          favSummary.addAll(favoriteFolders.toList());
+          parentFolderMap["お気に入り・ピン留め"] = favSummary;
+
+          // 並び順の強制リセット
+          // 常に [お気に入り, All Songs] の順で始まるように並べ替える
+          parentFolderOrder.remove("All Songs");
+          parentFolderOrder.remove("お気に入り・ピン留め");
+
+          parentFolderOrder.insert(0, "お気に入り・ピン留め");
+          parentFolderOrder.insert(1, "All Songs");
+
           // 他の上位フォルダ内に「既に消された物理フォルダ」が残っていたら掃除する（クリーンアップ）
           parentFolderMap.forEach((key, folderList) {
-            if (key != "All Songs" && key != FolderManager.virtualMasterKey) {
+            if (key != "All Songs" &&
+                key != "お気に入り・ピン留め" &&
+                key != FolderManager.virtualMasterKey) {
               folderList.retainWhere(
                 (fName) =>
                     finalMap.containsKey(fName) || fName.startsWith("VIRTUAL_"),
@@ -400,7 +419,9 @@ class _MusicScannerState extends State<MusicScanner> {
       isHeaderOpen: isHeaderOpen,
       isTopLevel: currentParentName == null,
       showPinButton:
-          currentFolderName != null && currentFolderName != "⭐ お気に入り",
+          currentFolderName != null &&
+          currentFolderName != "⭐ お気に入り" &&
+          !currentFolderName!.startsWith("VIRTUAL_"), // 仮想フォルダはピン留め不可
       showSequenceButton: isAllSongsSummary,
       onSequenceTap: _showRouteSelector,
       isPinned: favoriteFolders.contains(currentFolderName),
@@ -494,72 +515,89 @@ class _MusicScannerState extends State<MusicScanner> {
           ),
         ];
       }
-    } else if (currentParentName == "All Songs") {
-      // --- All Songs でのメニュー
-      items = [
-        HeaderMenuItem(
-          icon: Icons.rule_rounded,
-          label: "まとめフォルダ\nに追加",
-          onTap: () => setState(() {
-            _resetModes();
-            isSelectionMode = true;
-            isAssignMode = true;
-          }),
-        ),
-        HeaderMenuItem(
-          icon: Icons.rule_rounded, // TODO変更
-          label: "フォルダの表示・非表示\nの切り替え",
-          onTap: () => setState(() {
-            _resetModes();
-            isSelectionMode = true;
-          }), // 変更の結果はフォルダ追加・シーケンスにも影響（All Songsから一時的に抜くような対応で可能？）
-        ),
-      ];
     } else if (currentParentName != null) {
       // --- 中位（自作まとめフォルダ）でのメニュー ---
-      items = [
-        HeaderMenuItem(
-          icon: Icons.add_to_photos_outlined,
-          label: "All Songs から\nフォルダ追加",
-          onTap: _showAddFoldersToSummaryDialog,
-        ),
-        HeaderMenuItem(
-          icon: Icons.add_to_photos_outlined, // TODO変更
-          label: "別のまとめフォルダ\nからフォルダ追加",
-          onTap: (){}, // TODO 
-        ),
-        HeaderMenuItem(
-          icon: Icons.create_new_folder_outlined,
-          label: "空フォルダ作成",
-          onTap: _showCreateVirtualFolderDialog,
-        ),
-        HeaderMenuItem(
-          icon: Icons.edit_note,
-          label: "名前変更",
-          onTap: () => setState(() {
-            _resetModes();
-            isRenameMode = true;
-          }),
-        ),
-        HeaderMenuItem(
-          icon: Icons.sort,
-          label: "並べ替え\n(再生順も同期)",
-          onTap: () => setState(() {
-            _resetModes();
-            isSortMode = true;
-          }),
-        ),
-        HeaderMenuItem(
-          icon: Icons.playlist_remove,
-          label: "まとめから外す",
-          color: Colors.orangeAccent,
-          onTap: () => setState(() {
-            _resetModes();
-            isDeleteMode = true;
-            isSelectionMode = true;
-          }),
-        ),
-      ];
+      if (currentParentName == "All Songs") {
+        // --- All Songs でのメニュー
+        items = [
+          HeaderMenuItem(
+            icon: Icons.rule_rounded,
+            label: "まとめフォルダ\nに追加",
+            onTap: () => setState(() {
+              _resetModes();
+              isSelectionMode = true;
+              isAssignMode = true;
+            }),
+          ),
+          HeaderMenuItem(
+            icon: Icons.rule_rounded, // TODO変更
+            label: "フォルダの表示・非表示\nの切り替え",
+            onTap: () => setState(() {
+              _resetModes();
+              isSelectionMode = true;
+            }), // 変更の結果はフォルダ追加・シーケンスにも影響（All Songsから一時的に抜くような対応で可能？）
+          ),
+        ];
+      } else if (currentParentName == "お気に入り・ピン留め") {
+        items = [
+          HeaderMenuItem(
+            icon: Icons.search,
+            label: "フォルダ検索",
+            color: Colors.white60,
+            onTap: () {
+              // TODO 未来的に検索ロジックをここに実装
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("検索機能は今後のアップデートで実装予定です")),
+              );
+            },
+          ),
+        ];
+      } else {
+        // --- 基本的なまとめフォルダでのメニュー ---
+        items = [
+          HeaderMenuItem(
+            icon: Icons.add_to_photos_outlined,
+            label: "All Songs から\nフォルダ追加",
+            onTap: _showAddFoldersToSummaryDialog,
+          ),
+          HeaderMenuItem(
+            icon: Icons.add_to_photos_outlined, // TODO変更
+            label: "別のまとめフォルダ\nからフォルダ追加",
+            onTap: () {}, // TODO
+          ),
+          HeaderMenuItem(
+            icon: Icons.create_new_folder_outlined,
+            label: "空フォルダ作成",
+            onTap: _showCreateVirtualFolderDialog,
+          ),
+          HeaderMenuItem(
+            icon: Icons.edit_note,
+            label: "名前変更",
+            onTap: () => setState(() {
+              _resetModes();
+              isRenameMode = true;
+            }),
+          ),
+          HeaderMenuItem(
+            icon: Icons.sort,
+            label: "並べ替え\n(再生順も同期)",
+            onTap: () => setState(() {
+              _resetModes();
+              isSortMode = true;
+            }),
+          ),
+          HeaderMenuItem(
+            icon: Icons.playlist_remove,
+            label: "まとめから外す",
+            color: Colors.orangeAccent,
+            onTap: () => setState(() {
+              _resetModes();
+              isDeleteMode = true;
+              isSelectionMode = true;
+            }),
+          ),
+        ];
+      }
     } else {
       // --- 親階層（まとめ一覧）でのメニュー ---
       items = [
@@ -597,6 +635,7 @@ class _MusicScannerState extends State<MusicScanner> {
       ];
     }
 
+    if (items.isEmpty) return const SizedBox.shrink();
     return HeaderMenu(items: items);
   }
 
@@ -1341,17 +1380,30 @@ class _MusicScannerState extends State<MusicScanner> {
                       isSortMode: isSortMode,
                       isRenameMode: isRenameMode,
                       isDeleteMode: isDeleteMode,
-                      favoriteIds: currentFolderName == null
-                          ? favoriteFolders
-                          : favoriteSongs,
+                      //「⭐ お気に入り」という名前のフォルダ自体は、お気に入り(スター)対象から除外する
+                      favoriteIds: currentParentName == "お気に入り・ピン留め"
+                          ? favoriteFolders.where((f) => f != "お気に入り").toSet()
+                          : (currentFolderName == null
+                                ? favoriteFolders
+                                : favoriteSongs),
                       nicknames: currentFolderName == null
                           ? folderNicknames
                           : songNicknames,
                       // --- 各種操作ロジック（既存の関数をつなぐ） ---
                       onTap: (item, index) {
+                        final id = (item is SongModel)
+                            ? item.data
+                            : item.toString();
+                        // 最上位階層（まとめ一覧）にいる時、特定のフォルダは操作させない
+                        bool isSystemFolder =
+                            (id == "All Songs" || id == "お気に入り・ピン留め");
+
                         // 1. タップ時のロジック
                         if (isSelectionMode) {
-                          if (item == "All Songs") return;
+                          // システムフォルダならチェックを入れさせない
+                          if (currentParentName == null && isSystemFolder) {
+                            return;
+                          }
 
                           setState(() {
                             final id = (item is SongModel)
@@ -1391,8 +1443,8 @@ class _MusicScannerState extends State<MusicScanner> {
                           if (oldIdx < newIdx) newIdx -= 1;
 
                           if (currentParentName == null) {
-                            if (oldIdx == 0 || newIdx == 0) {
-                              return; // All Songs保護
+                            if (oldIdx <= 1 || newIdx <= 1) {
+                              return; // 0番目(お気に入り)と1番目(All Songs)は動かさない
                             }
                             final item = parentFolderOrder.removeAt(oldIdx);
                             parentFolderOrder.insert(newIdx, item);
@@ -1428,19 +1480,36 @@ class _MusicScannerState extends State<MusicScanner> {
                       },
                       onFavoriteTap: (item) {
                         // 4. お気に入り（スター/ピン）タップ時のロジック
+                        final id = (item is SongModel)
+                            ? item.data
+                            : item.toString();
+
+                        // 「⭐ お気に入り」フォルダそのものは触れないようにガード
+                        if (currentParentName == "お気に入り・ピン留め" &&
+                            id == "⭐ お気に入り") {
+                          return;
+                        }
+                        // 仮想フォルダならピン留めをしない
+                        if (id.startsWith("VIRTUAL_")) {
+                          return;
+                        }
+
                         setState(() {
-                          final id = (item is SongModel)
-                              ? item.data
-                              : item.toString();
                           if (item is SongModel) {
+                            // 曲のお気に入り登録・解除
                             favoriteSongs.contains(id)
                                 ? favoriteSongs.remove(id)
                                 : favoriteSongs.add(id);
                           } else {
+                            // 物理フォルダのピン留め登録・解除
                             favoriteFolders.contains(id)
                                 ? favoriteFolders.remove(id)
                                 : favoriteFolders.add(id);
                           }
+                          // scanDevice() を丸ごと呼ぶ代わりに、「お気に入り・ピン留め」のリストだけをここで更新
+                          List<String> favSummary = ["⭐ お気に入り"];
+                          favSummary.addAll(favoriteFolders.toList());
+                          parentFolderMap["お気に入り・ピン留め"] = favSummary;
                         });
                         _saveAllSettings();
                       },
