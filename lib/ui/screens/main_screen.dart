@@ -24,6 +24,7 @@ import '../widgets/list_header.dart';
 import '../widgets/header_menu.dart';
 import '../../logic/playback_controller.dart';
 import '../../logic/folder_manager.dart';
+import '../../logic/scan_manager.dart';
 
 // 定数や設定だけを書く場所「看板(Widget)」
 class MusicScanner extends StatefulWidget {
@@ -69,7 +70,6 @@ class _MusicScannerState extends State<MusicScanner> {
   bool isMoveMode = false;
   // 仕分けモードかどうか（AllSongs内にて）
   bool isAssignMode = false;
-
   // ヘッダーが開いているかどうか
   bool isHeaderOpen = false;
 
@@ -79,7 +79,6 @@ class _MusicScannerState extends State<MusicScanner> {
   Map<String, String> songNicknames = {}; // {"ファイルパス": "仮想曲名"}
 
   // 検索用の道具
-  final OnAudioQuery _audioQuery = OnAudioQuery();
   List<SongModel> musicFiles = [];
   // 現在の曲名を保存する箱
   SongModel? selectSong;
@@ -136,8 +135,7 @@ class _MusicScannerState extends State<MusicScanner> {
   // 権限があるかどうかを覚えておく（最初は false）
   bool isPermissionGranted = false;
 
-  // スキャン中かどうかを判定するフラグ(2重実行防止用)
-  bool _isScanning = false;
+  late final ScanManager _scanManager;
 
   // listenの結果を保存する変数（後で中身を入れるので late を使います）
   late StreamSubscription _positionSubscription;
@@ -166,7 +164,7 @@ class _MusicScannerState extends State<MusicScanner> {
     // 上記のどちらかが許可されたらスキャンを開始する
     if (granted || storageGranted) {
       setState(() => isPermissionGranted = true); // 許可された
-      scanDevice();
+      _scanManager.scanDevice();
     } else {
       setState(() => isPermissionGranted = false); // 拒否された
       Future.delayed(Duration.zero, () {
@@ -264,198 +262,6 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
-    デバイス内から起動時に音楽ファイルを探す関数
-  */
-  Future<void> scanDevice() async {
-    // 2重スキャン防止ガード：非同期処理の多重実行によるクラッシュやデータ破壊を防ぐ
-    if (_isScanning) return;
-    setState(() => _isScanning = true);
-
-    try {
-      debugPrint("HOS: デバイススキャン開始...");
-      // ストレージのアクセス権限チェック
-      bool hasPermission = await Permission.audio.isGranted;
-      if (!hasPermission) {
-        hasPermission = await Permission.audio.request().isGranted;
-      }
-      if (!hasPermission) return;
-
-      // スマホ内のデータベースに全音声ファイル・曲ファイルを要求する
-      List<SongModel> songs = await _audioQuery.querySongs(
-        ignoreCase: true,
-        sortType: SongSortType.DISPLAY_NAME, // DISPLAY_NAME（ファイル名）を基準の並び替え
-        orderType: OrderType.ASC_OR_SMALLER, // 昇順（あいうえお順
-        uriType: UriType.EXTERNAL, // 外部ストレージ
-      );
-      debugPrint("HOS: スキャン完了。${songs.length}曲見つかりました。");
-
-      // 取得した実体ファイルをメモリ上のマスターリストに保持
-      musicFiles = songs;
-
-      // 実体が消えたデータのクリーンアップ
-      cleanUpDeletedPhysicalData();
-
-      // メモリ上のデータをもとに、フォルダ構造を組み立てる
-      rebuildFolderStructures();
-
-      // 仮想フォルダの復元
-      virtualFolderPaths.forEach((uniqueId, savedPaths) {
-        // 全曲データの中から、保存されたパスに一致する曲だけ抽出してリスト化
-        List<SongModel> restoredSongs = songs
-            .where((s) => savedPaths.contains(s.data))
-            .toList();
-        // 並び順を保存時のパスリストの順に合わせる
-        List<SongModel> orderedSongs = [];
-        for (String path in savedPaths) {
-          final found = restoredSongs.where((s) => s.data == path);
-          if (found.isNotEmpty) orderedSongs.add(found.first);
-        }
-        finalMap[uniqueId] = orderedSongs;
-      });
-
-      // 初期シーケンスの準備
-      if (folderSequence.isEmpty) {
-        folderSequence = finalMap.keys
-            .where((k) => k == "⭐ お気に入り" || favoriteFolders.contains(k))
-            .toList();
-      }
-    } catch (e) {
-      debugPrint("スキャン中にエラーが発生しました: $e"); // エラー補足
-    } finally {
-      _isScanning = false; // 必ずフラグを戻す
-    }
-  }
-
-  /*
-    物理ファイルが消えていた場合の周辺データの自動掃除用関数
-  */
-  void cleanUpDeletedPhysicalData() {
-    // 現在実在するフォルダマップを仮構築
-    Map<String, List<SongModel>> tempMap = {};
-    for (var song in musicFiles) {
-      // 絶対パスから所属フォルダ名を切り出す
-      String? folderPath = song.data.substring(0, song.data.lastIndexOf('/'));
-      String folderName = folderPath.substring(folderPath.lastIndexOf('/') + 1);
-      if (!tempMap.containsKey(folderName)) tempMap[folderName] = [];
-      tempMap[folderName]!.add(song);
-    }
-
-    // 物理削除への自動追従（実体が消えたデータのクリーンアップ）
-    setState(() {
-      // (a) ピン留めリスト(favoriteFolders)から、ストレージに存在しなくなった物理フォルダを自動削除
-      favoriteFolders.retainWhere(
-        (folderName) => tempMap.containsKey(folderName),
-      );
-      // (b) ユーザー作成の仮想フォルダ内から、ストレージに存在しなくなった実体曲を自動除外
-      folderMap.forEach((key, songList) {
-        if (key.startsWith("VIRTUAL_")) {
-          // 今回のスキャンの結果(musicFiles)に今も残っている曲だけを生き残らせる
-          songList.retainWhere(
-            (virtualSong) => musicFiles.any(
-              (actualSong) => actualSong.data == virtualSong.data,
-            ),
-          );
-        }
-      });
-      // (c) 曲のニックネームの実在する曲のパス以外を削除
-      songNicknames.removeWhere(
-        (path, _) => !musicFiles.any((s) => s.data == path),
-      );
-      // (d) フォルダのニックネームを、実在する物理フォルダ・VIRTUAL_フォルダだけを残す
-      folderNicknames.removeWhere(
-        (id, _) => !tempMap.containsKey(id) && !id.startsWith("VIRTUAL_"),
-      );
-      // (e) 最上位の並び順リストの、実在しないフォルダ文字を消す
-      parentFolderOrder.retainWhere(
-        (id) =>
-            id == "お気に入り・ピン留め" ||
-            id == "All Songs" ||
-            tempMap.containsKey(id) ||
-            id.startsWith("VIRTUAL_"),
-      );
-      // (f) フォルダループシーケンス内の実在しないフォルダを再生順から削除
-      folderSequence.retainWhere(
-        (id) => tempMap.containsKey(id) || id == "⭐ お気に入り",
-      );
-    });
-  }
-
-  /*
-    マップ再構築ロジック用関数
-    メモリ上のデータを並び替えて最新の状態にする（ボタンタップ時などはこれだけを実行）
-  */
-  void rebuildFolderStructures() {
-    setState(() {
-      // 1. musicFiles（前回のスキャン結果）から物理フォルダマップを再生成
-      Map<String, List<SongModel>> tempMap = {};
-      for (var song in musicFiles) {
-        // 絶対パスから所属フォルダ名を切り出す
-        String? folderPath = song.data.substring(0, song.data.lastIndexOf('/'));
-        String folderName = folderPath.substring(
-          folderPath.lastIndexOf('/') + 1,
-        );
-        if (!tempMap.containsKey(folderName)) {
-          tempMap[folderName] = [];
-        }
-        tempMap[folderName]!.add(song);
-      }
-
-      // 2. ユーザーが手動で並び替えた「仮想フォルダ内の固有の曲順」を復元維持する
-      // (保存されたパスリスト　virtualFolderPaths の順序に SongModel を並び替えてつめなおす)
-      virtualFolderPaths.forEach((uniqueId, savedPaths) {
-        if (folderMap.containsKey(uniqueId)) {
-          List<SongModel> currentVirtualSongs = folderMap[uniqueId] ?? [];
-          List<SongModel> orderedSongs = [];
-
-          for (String path in savedPaths) {
-            final found = currentVirtualSongs.where((s) => s.data == path);
-            if (found.isNotEmpty) {
-              orderedSongs.add(found.first);
-            }
-          }
-          folderMap[uniqueId] = orderedSongs;
-        }
-      });
-
-      // 3. 「⭐ お気に入り」仮想フォルダの中身を favoriteSongs を基に再構築
-      // (お気に入りに入っている曲の実体がストレージから消えていた場合も、ここで自動的に除外されます)
-      tempMap["⭐ お気に入り"] = musicFiles
-          .where((s) => favoriteSongs.contains(s.data))
-          .toList();
-
-      // 4. 既存の folderMap から「物理フォルダ」と「⭐ お気に入り」を一旦リフレッシュ
-      // (ユーザーが作った仮想フォルダ VIRTUAL_ は消さずにそのまま残します)
-      folderMap.removeWhere(
-        (key, _) => !key.startsWith("VIRTUAL_") && key != "⭐ お気に入り",
-      );
-      tempMap.addAll(tempMap);
-
-      // 5. システムまとめフォルダ(All Songs)の構築・更新
-      parentFolderMap["All Songs"] = tempMap.keys
-          .where((k) => k != "⭐ お気に入り")
-          .toList();
-
-      // 6.「お気に入り・ピン留め」まとめフォルダの中身を最新のピン留め順で更新
-      List<String> favSummary = ["⭐ お気に入り"];
-      favSummary.addAll(favoriteFolders.toList());
-      parentFolderMap["お気に入り・ピン留め"] = favSummary;
-
-      // 7. 最上位順序のクリーンアップと固定
-      parentFolderOrder.remove("All Songs");
-      parentFolderOrder.remove("お気に入り・ピン留め");
-
-      parentFolderOrder.insert(0, "お気に入り・ピン留め");
-      parentFolderOrder.insert(1, "All Songs");
-
-      // 8. 初期シーケンス（フォルダループ順）の自動準備
-      //（最初は「⭐ お気に入り」のみをループ対象にする）
-      if (folderSequence.isEmpty) {
-        folderSequence = ["⭐ お気に入り"];
-      }
-    });
-  }
-
-  /*
     共通部品：リストのヘッダー作成用の関数
   */
   Widget _buildUnifiedListHeader() {
@@ -499,7 +305,7 @@ class _MusicScannerState extends State<MusicScanner> {
           }
         });
         _saveAllSettings();
-        rebuildFolderStructures();
+        _scanManager.rebuildFolderStructures();
       },
       menuContent: _buildHeaderPopDownMenu(), // メニューの中身を渡す
     );
@@ -752,6 +558,7 @@ class _MusicScannerState extends State<MusicScanner> {
           parentFolderOrder.add(name);
         });
         _saveAllSettings();
+        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -778,6 +585,7 @@ class _MusicScannerState extends State<MusicScanner> {
           if (index != -1) parentFolderOrder[index] = name;
         });
         _saveAllSettings();
+        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -812,7 +620,7 @@ class _MusicScannerState extends State<MusicScanner> {
       _resetModes();
     });
     _saveAllSettings();
-    rebuildFolderStructures();
+    _scanManager.rebuildFolderStructures();
   }
 
   /*
@@ -835,6 +643,7 @@ class _MusicScannerState extends State<MusicScanner> {
           parentFolderMap[currentParentName]!.add(uniqueKey);
         });
         _saveAllSettings();
+        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -862,6 +671,7 @@ class _MusicScannerState extends State<MusicScanner> {
           );
         });
         _saveAllSettings();
+        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -890,12 +700,13 @@ class _MusicScannerState extends State<MusicScanner> {
           folderNicknames[id] = name;
         });
         _saveAllSettings();
+        _scanManager.rebuildFolderStructures();
       },
     );
   }
 
   /*
-    各モードに応じた処理関数
+    画面下部の確定（実行）ボタンの、各モードに応じた処理関数
   */
   void _executeBulkAction() {
     if (isDeleteMode) {
@@ -979,7 +790,7 @@ class _MusicScannerState extends State<MusicScanner> {
       _resetModes();
     });
     _saveAllSettings();
-    rebuildFolderStructures();
+    _scanManager.rebuildFolderStructures();
   }
 
   /*
@@ -1065,6 +876,7 @@ class _MusicScannerState extends State<MusicScanner> {
       _resetModes();
     });
     _saveAllSettings();
+    _scanManager.rebuildFolderStructures();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1117,6 +929,7 @@ class _MusicScannerState extends State<MusicScanner> {
       onSave: (newSequence) {
         setState(() => folderSequence = newSequence);
         _saveAllSettings();
+        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -1268,10 +1081,40 @@ class _MusicScannerState extends State<MusicScanner> {
   @override // 画面が生まれた瞬間に実行する処理
   void initState() {
     super.initState();
-    // アプリが立ち上がった瞬間に、設定読み込みと権限チェックから
-    _initializeHOS();
 
-    // 監視役を登録して、変数に代入しておく
+    // ScanManager の初期化と main_screen 側のデータ構造の紐付け
+    _scanManager = ScanManager(
+      getMusicFiles: () => musicFiles,
+      setMusicFiles: (songs) => musicFiles = songs,
+      getFolderMap: () => folderMap,
+      getParentFolderMap: () => parentFolderMap,
+      getParentFolderOrder: () => parentFolderOrder,
+      getFolderSequence: () => folderSequence,
+      getFavoriteFolders: () => favoriteFolders,
+      getFavoriteSongs: () => favoriteSongs,
+      getVirtualFolderPaths: () => virtualFolderPaths,
+      getSongNicknames: () => songNicknames,
+      getFolderNicknames: () => folderNicknames,
+      updateUI: () => setState(() {}),
+    );
+
+    // アプリが立ち上がった瞬間に、設定読み込みと権限チェック
+    _initializeHOS();
+  }
+
+  /*
+    HOSの起動シーケンス関数
+  */
+  Future<void> _initializeHOS() async {
+    // 1. ローカルに保存されている設定（お気に入りやニックネームなど）を復元
+    debugPrint("HOS: 設定の読み込み開始...");
+    await _loadAllSettings();
+    debugPrint("HOS: 設定の読み込み完了。権限確認開始...");
+
+    // 2. ScanManager経由でスマホの全曲物理スキャンを実行
+    await _scanManager.scanDevice();
+
+    // 3．監視役を登録して、変数に代入しておく
     _completeSubscription = _audioService.onPlayerComplete.listen((_) {
       playNextSong(isAutomatic: true); // 自動であることの証明
     });
@@ -1287,15 +1130,8 @@ class _MusicScannerState extends State<MusicScanner> {
       if (!mounted) return; // 画面が消えていたら何もしない
       setState(() => position = newPosition);
     });
-  }
 
-  /*
-    HOSの起動シーケンス：読み込みが終わってから権限確認・スキャンに進む
-  */
-  Future<void> _initializeHOS() async {
-    debugPrint("HOS: 設定の読み込み開始...");
-    await _loadAllSettings();
-    debugPrint("HOS: 設定の読み込み完了。権限確認開始...");
+    // 4. 権限のリクエスト
     await requestPermission();
     debugPrint("HOS: 初期化シーケンス完了。");
   }
@@ -1371,7 +1207,7 @@ class _MusicScannerState extends State<MusicScanner> {
           onScanPressed: () {
             // スキャンを手動で開始
             Navigator.pop(context); // メニューを閉じる
-            scanDevice();
+            _scanManager.scanDevice();
           },
         ),
 
@@ -1540,6 +1376,7 @@ class _MusicScannerState extends State<MusicScanner> {
                           }
                         });
                         _saveAllSettings();
+                        _scanManager.rebuildFolderStructures();
                       },
                       onCheckboxChanged: (item, val) {
                         // 3. チェックボックスの変更時ロジック
@@ -1587,7 +1424,7 @@ class _MusicScannerState extends State<MusicScanner> {
                                 : favoriteFolders.add(id);
                           }
                         });
-                        rebuildFolderStructures();
+                        _scanManager.rebuildFolderStructures();
                         _saveAllSettings();
                       },
                       onRenameTap: (item) {
@@ -1622,6 +1459,7 @@ class _MusicScannerState extends State<MusicScanner> {
                               );
                             });
                             _saveAllSettings();
+                            _scanManager.rebuildFolderStructures();
                           },
                         );
                       },
