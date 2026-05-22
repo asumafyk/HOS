@@ -4,6 +4,7 @@
  */
 
 import 'package:flutter/material.dart';
+import 'package:my_first_app/logic/folder_manager.dart';
 import '../theme/app_theme.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -220,7 +221,7 @@ class FolderDialogs {
                 child: ListView(
                   shrinkWrap: true,
                   children: parentFolderMap.keys
-                      .where((key) => key != "All Songs")
+                      .where((key) => key != "All Songs" && key != "お気に入り・ピン留め" && key != FolderManager.virtualMasterKey)
                       .map(
                         (target) => ListTile(
                           leading: const Icon(

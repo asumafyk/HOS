@@ -198,6 +198,8 @@ class _MusicScannerState extends State<MusicScanner> {
       favoriteFolders: favoriteFolders,
       // 跨ぎのON/OFFを保存
       isFolderBridgeEnabled: isFolderBridgeEnabled,
+      // 再生モードを保存
+      playMode: playMode,
       // シーケンスの保存(フォルダ跨ぎの)
       folderSequence: folderSequence,
       // 上位フォルダの地図を保存
@@ -211,6 +213,9 @@ class _MusicScannerState extends State<MusicScanner> {
       // 仮想フォルダのパス一覧を保存
       virtualFolderPaths: newVirtualPaths,
     );
+
+    // 保存が完了したら、連動してメモリ側の地図を最新にする
+    _scanManager.rebuildFolderStructures();
   }
 
   /* 
@@ -228,6 +233,8 @@ class _MusicScannerState extends State<MusicScanner> {
       favoriteFolders = data['favoriteFolders'];
       // 跨ぎのON/OFFを読み込み
       isFolderBridgeEnabled = data['isFolderBridgeEnabled'];
+      // 再生モードを読み込み
+      playMode = data['playMode'];
       // シーケンスの読み込み(フォルダ跨ぎの)
       folderSequence = data['folderSequence'];
       // 上位フォルダ地図 (parentFolderMap) の復元
@@ -258,6 +265,7 @@ class _MusicScannerState extends State<MusicScanner> {
       // 削除されたフォルダをリストから掃除
       parentFolderOrder.retainWhere((key) => parentFolderMap.containsKey(key));
     });
+    await _saveAllSettings();
     debugPrint("--- All Settings Loaded Successfully ---");
   }
 
@@ -305,7 +313,6 @@ class _MusicScannerState extends State<MusicScanner> {
           }
         });
         _saveAllSettings();
-        _scanManager.rebuildFolderStructures();
       },
       menuContent: _buildHeaderPopDownMenu(), // メニューの中身を渡す
     );
@@ -334,7 +341,7 @@ class _MusicScannerState extends State<MusicScanner> {
             label: "並べ替え\n(表示順のみ)",
             onTap: () => setState(() {
               _resetModes();
-              isSortMode = true;
+              // TODO 現状では再生順も同期している isSortMode = true;
             }),
           ),
         ];
@@ -558,7 +565,6 @@ class _MusicScannerState extends State<MusicScanner> {
           parentFolderOrder.add(name);
         });
         _saveAllSettings();
-        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -585,7 +591,6 @@ class _MusicScannerState extends State<MusicScanner> {
           if (index != -1) parentFolderOrder[index] = name;
         });
         _saveAllSettings();
-        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -620,7 +625,6 @@ class _MusicScannerState extends State<MusicScanner> {
       _resetModes();
     });
     _saveAllSettings();
-    _scanManager.rebuildFolderStructures();
   }
 
   /*
@@ -643,7 +647,6 @@ class _MusicScannerState extends State<MusicScanner> {
           parentFolderMap[currentParentName]!.add(uniqueKey);
         });
         _saveAllSettings();
-        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -671,7 +674,6 @@ class _MusicScannerState extends State<MusicScanner> {
           );
         });
         _saveAllSettings();
-        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -700,7 +702,6 @@ class _MusicScannerState extends State<MusicScanner> {
           folderNicknames[id] = name;
         });
         _saveAllSettings();
-        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -790,7 +791,6 @@ class _MusicScannerState extends State<MusicScanner> {
       _resetModes();
     });
     _saveAllSettings();
-    _scanManager.rebuildFolderStructures();
   }
 
   /*
@@ -876,7 +876,6 @@ class _MusicScannerState extends State<MusicScanner> {
       _resetModes();
     });
     _saveAllSettings();
-    _scanManager.rebuildFolderStructures();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -929,7 +928,6 @@ class _MusicScannerState extends State<MusicScanner> {
       onSave: (newSequence) {
         setState(() => folderSequence = newSequence);
         _saveAllSettings();
-        _scanManager.rebuildFolderStructures();
       },
     );
   }
@@ -1245,8 +1243,12 @@ class _MusicScannerState extends State<MusicScanner> {
                 onContinuousSkipStop: _audioService.stopContinuousSkip,
                 onSeek: (val) =>
                     _audioService.seek(Duration(seconds: val.toInt())),
-                onModeToggle: () =>
-                    setState(() => playMode = (playMode + 1) % 4),
+                onModeToggle: () {
+                  setState(() {
+                    playMode = (playMode + 1) % 4;
+                  });
+                  _saveAllSettings();
+                },
                 onBridgeToggle: () {
                   setState(
                     () => isFolderBridgeEnabled = !isFolderBridgeEnabled,
@@ -1376,7 +1378,6 @@ class _MusicScannerState extends State<MusicScanner> {
                           }
                         });
                         _saveAllSettings();
-                        _scanManager.rebuildFolderStructures();
                       },
                       onCheckboxChanged: (item, val) {
                         // 3. チェックボックスの変更時ロジック
@@ -1424,7 +1425,6 @@ class _MusicScannerState extends State<MusicScanner> {
                                 : favoriteFolders.add(id);
                           }
                         });
-                        _scanManager.rebuildFolderStructures();
                         _saveAllSettings();
                       },
                       onRenameTap: (item) {
@@ -1459,7 +1459,6 @@ class _MusicScannerState extends State<MusicScanner> {
                               );
                             });
                             _saveAllSettings();
-                            _scanManager.rebuildFolderStructures();
                           },
                         );
                       },

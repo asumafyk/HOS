@@ -3,6 +3,7 @@
  */
 
 import 'package:flutter/material.dart';
+import 'package:my_first_app/logic/folder_manager.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -76,10 +77,9 @@ class ScanManager {
 
       setMusicFiles(songs);
 
-      // 実体が消えたデータのクリーンアップ
-      cleanUpDeletedPhysicalData();
-      // メモリ上のデータをもとに、フォルダ構造を組み立てる
+      // 先に構造を組み立ててから、本当に不要なデータだけを掃除する順序に変更
       rebuildFolderStructures();
+      cleanUpDeletedPhysicalData();
     } catch (e) {
       debugPrint("スキャン中にエラーが発生しました: $e"); // エラー補足
     } finally {
@@ -97,6 +97,7 @@ class ScanManager {
     final folderNicknames = getFolderNicknames();
     final parentFolderOrder = getParentFolderOrder();
     final folderSequence = getFolderSequence();
+    final parentFolderMap = getParentFolderMap();
 
     // 現在実在するフォルダマップを仮構築
     Map<String, List<SongModel>> tempMap = {};
@@ -138,7 +139,8 @@ class ScanManager {
           id == "お気に入り・ピン留め" ||
           id == "All Songs" ||
           tempMap.containsKey(id) ||
-          id.startsWith("VIRTUAL_"),
+          id.startsWith("VIRTUAL_") ||
+          parentFolderMap.containsKey(id), // カスタムまとめフォルダの生存許可
     );
     // (f) フォルダループシーケンス内の実在しないフォルダを再生順から削除
     folderSequence.retainWhere(
@@ -172,20 +174,21 @@ class ScanManager {
 
     // 2. ユーザーが手動で並び替えた「仮想フォルダ内の固有の曲順」を復元維持する
     // (保存されたパスリスト　virtualFolderPaths の順序に SongModel を並び替えてつめなおす)
-    virtualFolderPaths.forEach((uniqueId, savedPaths) {
-      if (folderMap.containsKey(uniqueId)) {
-        List<SongModel> currentVirtualSongs = folderMap[uniqueId] ?? [];
-        List<SongModel> orderedSongs = [];
+    for (var entry in virtualFolderPaths.entries) {
+      final uniqueId = entry.key;
+      final savedPaths = entry.value;
 
+      if (uniqueId != "⭐ お気に入り") {
+        List<SongModel> orderedSongs = [];
         for (String path in savedPaths) {
-          final found = currentVirtualSongs.where((s) => s.data == path);
+          final found = musicFiles.where((s) => s.data == path);
           if (found.isNotEmpty) {
             orderedSongs.add(found.first);
           }
         }
-        folderMap[uniqueId] = orderedSongs;
+        tempMap[uniqueId] = orderedSongs;
       }
-    });
+    }
 
     // 3. 「⭐ お気に入り」仮想フォルダの中身を favoriteSongs を基に再構築
     // (お気に入りに入っている曲の実体がストレージから消えていた場合も、ここで自動的に除外されます)
@@ -194,35 +197,68 @@ class ScanManager {
         .toList();
 
     // 4. 既存の folderMap から「物理フォルダ」と「⭐ お気に入り」を一旦リフレッシュ
-    // (ユーザーが作った仮想フォルダ VIRTUAL_ は消さずにそのまま残します)
-    folderMap.removeWhere(
-      (key, _) => !key.startsWith("VIRTUAL_") && key != "⭐ お気に入り",
-    );
+    folderMap.clear();
     folderMap.addAll(tempMap);
 
-    // 5. システムまとめフォルダ(All Songs)の構築・更新
+    // 5. virtualFolderPaths に存在するのに、
+    // folderMap に入っていない「完全に空の自作フォルダ」の枠を強制担保する
+    for (var vKey in virtualFolderPaths.keys) {
+      if (!folderMap.containsKey(vKey)) {
+        folderMap[vKey] = <SongModel>[]; // 空のリストでフォルダを維持
+      }
+    }
+
+    // 6. システムまとめフォルダ(All Songs)の構築・更新
+    // (⭐ お気に入り 以外の、物理フォルダ ＋ 空を含むすべての仮想フォルダを登録)
     parentFolderMap["All Songs"] = tempMap.keys
         .where((k) => k != "⭐ お気に入り")
         .toList();
 
-    // 6.「お気に入り・ピン留め」まとめフォルダの中身を最新のピン留め順で更新
+    // 7.「お気に入り・ピン留め」まとめフォルダの中身を最新のピン留め順で更新
     List<String> favSummary = ["⭐ お気に入り"];
-    favSummary.addAll(favoriteFolders.toList());
+    for (String fName in favoriteFolders) {
+      if (folderMap.containsKey(fName) && fName != "⭐ お気に入り") {
+        favSummary.add(fName);
+      }
+    }
     parentFolderMap["お気に入り・ピン留め"] = favSummary;
 
-    // 7. 最上位順序のクリーンアップと固定
+    // 8. 最上位順序のクリーンアップと固定
     parentFolderOrder.remove("All Songs");
     parentFolderOrder.remove("お気に入り・ピン留め");
 
     parentFolderOrder.insert(0, "お気に入り・ピン留め");
     parentFolderOrder.insert(1, "All Songs");
 
-    // 8. 初期シーケンス（フォルダループ順）の自動準備
+    // 9. ユーザーが作ったカスタムまとめフォルダの「枠」を維持・復元する
+    // 不要になったシステムキーだけを除外するか、
+    // 現在の parentFolderOrder に存在するカスタムフォルダのキーと中身を退避して復元します。
+    Map<String, List<String>> userSummaryBackup = {};
+    parentFolderMap.forEach((key, value) {
+      if (key != "All Songs" &&
+          key != "お気に入り・ピン留め" &&
+          key != FolderManager.virtualMasterKey) {
+        userSummaryBackup[key] = List<String>.from(value);
+      }
+    });
+    // 既存のマップからシステム系以外を整理し、バックアップから復元
+    parentFolderMap.removeWhere(
+      (key, _) => key != "All Songs" && key != "お気に入り・ピン留め",
+    );
+    // バックアップからカスタムまとめを復元（空のまとめもこれで維持される）
+    for (String pName in parentFolderOrder) {
+      if (pName != "All Songs" && pName != "お気に入り・ピン留め") {
+        parentFolderMap[pName] = userSummaryBackup[pName] ?? <String>[];
+      }
+    }
+
+    // 10. 初期シーケンス（フォルダループ順）の自動準備
     //（最初は「⭐ お気に入り」のみをループ対象にする）
     if (folderSequence.isEmpty) {
       folderSequence.add("⭐ お気に入り");
     }
 
-    updateUI(); // setStateを反映
+    // setStateを反映し、UIを最新の地図にリフレッシュ
+    updateUI();
   }
 }

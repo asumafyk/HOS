@@ -17,6 +17,7 @@ class StorageService {
   static const String _keyFolderNicknames = "folder_nicknames";
   static const String _keySongNicknames = "song_nicknames";
   static const String _keyVirtualPaths = "virtual_folder_paths";
+  static const String _keyPlayMode = 'play_mode';
 
   // --- 全ての設定を一括保存する ---
   static Future<void> saveAll({
@@ -29,6 +30,7 @@ class StorageService {
     required Map<String, String> folderNicknames,
     required Map<String, String> songNicknames,
     required Map<String, List<String>> virtualFolderPaths,
+    required int playMode,
   }) async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -42,6 +44,8 @@ class StorageService {
     await prefs.setStringList(_keyFolderSequence, folderSequence);
     // 上位フォルダの並び順を保存
     await prefs.setStringList(_keyParentFolderOrder, parentFolderOrder);
+    // 再生モードを保存
+    await prefs.setInt(_keyPlayMode, playMode);
 
     //--- Map系はJSONに変換して保存 ---
 
@@ -73,7 +77,8 @@ class StorageService {
       // 上位フォルダの並び順を読み込み
       'parentFolderOrder':
           prefs.getStringList(_keyParentFolderOrder) ?? <String>[],
-
+      // 再生モードを読み込み
+      'playMode': prefs.getInt(_keyPlayMode) ?? 1, // 未保持ならデフォルト(1:全曲ループ再生)
       // 上位フォルダ地図 (parentFolderMap) の復元
       'parentFolderMap': _decodeMap(prefs.getString(_keyParentFolderMap)),
       // フォルダのニックネームMapの復元
