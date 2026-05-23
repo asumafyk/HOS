@@ -21,7 +21,7 @@ import '../../service/audio_player_service.dart';
 import '../widgets/player_panel.dart'; // 再生パネル
 import '../widgets/app_drawer.dart';
 import '../widgets/list_header.dart';
-import '../widgets/header_menu.dart';
+import '../widgets/header_menu_content.dart';
 import '../../logic/playback_controller.dart';
 import '../../logic/folder_manager.dart';
 import '../../logic/scan_manager.dart';
@@ -322,211 +322,60 @@ class _MusicScannerState extends State<MusicScanner> {
     共通部品：ヘッダー管理メニュー作成用の関数
   */
   Widget _buildHeaderPopDownMenu() {
-    // 表示するボタンのリストを階層ごとに準備
-    List<HeaderMenuItem> items = [];
+    return HeaderMenuContent(
+      currentParentName: currentParentName,
+      currentFolderName: currentFolderName,
 
-    if (currentFolderName != null) {
-      // --- 最下層（曲一覧）でのメニュー ---
-
-      // All Songs内の物理フォルダ内である場合
-      if (currentParentName == "All Songs") {
-        items = [
-          HeaderMenuItem(
-            icon: Icons.library_add,
-            label: "まとめフォルダ内に\n曲を追加",
-            onTap: () {},
-          ), // TODO
-          HeaderMenuItem(
-            icon: Icons.sort,
-            label: "並べ替え\n(表示順のみ)",
-            onTap: () => setState(() {
-              _resetModes();
-              // TODO 現状では再生順も同期している isSortMode = true;
-            }),
-          ),
-        ];
-      } else if (currentFolderName == "⭐ お気に入り") {
-        items = [
-          HeaderMenuItem(
-            icon: Icons.search,
-            label: "曲検索",
-            color: Colors.white60,
-            onTap: () {
-              // TODO 未来的に検索ロジックをここに実装
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("検索機能は今後のアップデートで実装予定です")),
-              );
-            },
-          ),
-        ];
-      } else {
-        // 仮想フォルダ内（自作まとめ内）：フル編集可能
-        items = [
-          HeaderMenuItem(
-            icon: Icons.library_add,
-            label: "All Songs から\n曲を追加",
-            onTap: () {},
-          ), // TODO
-          HeaderMenuItem(
-            icon: Icons.copy,
-            label: "コピー",
-            onTap: () => setState(() {
-              _resetModes();
-              isSelectionMode = true;
-              isCopyMode = true;
-            }),
-          ),
-          HeaderMenuItem(
-            icon: Icons.move_up,
-            label: "移動",
-            onTap: () => setState(() {
-              _resetModes();
-              isSelectionMode = true;
-              isMoveMode = true;
-            }),
-          ),
-          HeaderMenuItem(
-            icon: Icons.sort,
-            label: "並べ替え\n(再生順も同期)",
-            onTap: () => setState(() {
-              _resetModes();
-              isSortMode = true;
-            }),
-          ),
-          HeaderMenuItem(
-            icon: Icons.delete_sweep,
-            label: "削除",
-            color: Colors.redAccent,
-            onTap: () => setState(() {
-              _resetModes();
-              isDeleteMode = true;
-              isSelectionMode = true;
-            }),
-          ),
-        ];
-      }
-    } else if (currentParentName != null) {
-      // --- 中位（自作まとめフォルダ）でのメニュー ---
-      if (currentParentName == "All Songs") {
-        // --- All Songs でのメニュー
-        items = [
-          HeaderMenuItem(
-            icon: Icons.rule_rounded,
-            label: "まとめフォルダ\nに追加",
-            onTap: () => setState(() {
-              _resetModes();
-              isSelectionMode = true;
-              isAssignMode = true;
-            }),
-          ),
-          HeaderMenuItem(
-            icon: Icons.rule_rounded, // TODO変更
-            label: "フォルダの表示・非表示\nの切り替え",
-            onTap: () => setState(() {
-              _resetModes();
-              isSelectionMode = true;
-            }), // 変更の結果はフォルダ追加・シーケンスにも影響（All Songsから一時的に抜くような対応で可能？）
-          ),
-        ];
-      } else if (currentParentName == "お気に入り・ピン留め") {
-        items = [
-          HeaderMenuItem(
-            icon: Icons.search,
-            label: "フォルダ検索",
-            color: Colors.white60,
-            onTap: () {
-              // TODO 未来的に検索ロジックをここに実装
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("検索機能は今後のアップデートで実装予定です")),
-              );
-            },
-          ),
-        ];
-      } else {
-        // --- 基本的なまとめフォルダでのメニュー ---
-        items = [
-          HeaderMenuItem(
-            icon: Icons.add_to_photos_outlined,
-            label: "All Songs から\nフォルダ追加",
-            onTap: _showAddFoldersToSummaryDialog,
-          ),
-          HeaderMenuItem(
-            icon: Icons.add_to_photos_outlined, // TODO変更
-            label: "別のまとめフォルダ\nからフォルダ追加",
-            onTap: () {}, // TODO
-          ),
-          HeaderMenuItem(
-            icon: Icons.create_new_folder_outlined,
-            label: "空フォルダ作成",
-            onTap: _showCreateVirtualFolderDialog,
-          ),
-          HeaderMenuItem(
-            icon: Icons.edit_note,
-            label: "名前変更",
-            onTap: () => setState(() {
-              _resetModes();
-              isRenameMode = true;
-            }),
-          ),
-          HeaderMenuItem(
-            icon: Icons.sort,
-            label: "並べ替え\n(再生順も同期)",
-            onTap: () => setState(() {
-              _resetModes();
-              isSortMode = true;
-            }),
-          ),
-          HeaderMenuItem(
-            icon: Icons.playlist_remove,
-            label: "まとめから外す",
-            color: Colors.orangeAccent,
-            onTap: () => setState(() {
-              _resetModes();
-              isDeleteMode = true;
-              isSelectionMode = true;
-            }),
-          ),
-        ];
-      }
-    } else {
-      // --- 親階層（まとめ一覧）でのメニュー ---
-      items = [
-        HeaderMenuItem(
-          icon: Icons.create_new_folder_outlined,
-          label: "まとめ\n新規作成",
-          onTap: _showAddParentFolderDialog,
-        ),
-        HeaderMenuItem(
-          icon: Icons.edit_note,
-          label: "名前変更",
-          onTap: () => setState(() {
-            _resetModes();
-            isRenameMode = true;
-          }),
-        ),
-        HeaderMenuItem(
-          icon: Icons.sort,
-          label: "並べ替え",
-          onTap: () => setState(() {
-            _resetModes();
-            isSortMode = true;
-          }),
-        ),
-        HeaderMenuItem(
-          icon: Icons.remove_circle_outline,
-          label: "削除",
-          color: Colors.redAccent,
-          onTap: () => setState(() {
-            _resetModes();
-            isDeleteMode = true;
-            isSelectionMode = true;
-          }),
-        ),
-      ];
-    }
-
-    if (items.isEmpty) return const SizedBox.shrink();
-    return HeaderMenu(items: items);
+      // --- 各ボタンがタップされた時の処理をメイン画面のメソッドと紐付ける ---
+      onAddSongsToSummary: () {}, // TODO: AllSongsからの曲を追加
+      onSortDisplayedSongs: () => setState(() {
+        _resetModes();
+        // 将来的に表示順のみ並び替えるフラグなどを立てる場合はここに記述
+      }),
+      onSearchSongs: () {
+        ScaffoldMessenger.of(
+          // TODO
+          context,
+        ).showSnackBar(const SnackBar(content: Text("検索機能は今後のアップデートで実装予定です")));
+      },
+      onAddSongsFromAllSongs: () {}, // TODO: 仮想フォルダ内にてAllSongsからの曲を追加
+      onStartCopyMode: () => setState(() {
+        _resetModes();
+        isSelectionMode = true;
+        isCopyMode = true;
+      }),
+      onStartMoveMode: () => setState(() {
+        _resetModes();
+        isSelectionMode = true;
+        isMoveMode = true;
+      }),
+      onStartDeleteModeSongs: () => setState(() {
+        _resetModes();
+        isDeleteMode = true;
+        isSelectionMode = true;
+      }),
+      onStartAssignMode: () => setState(() {
+        _resetModes();
+        isSelectionMode = true;
+        isAssignMode = true;
+      }),
+      onAddFoldersToSummary: _showAddFoldersToSummaryDialog,
+      onCreateVirtualFolder: _showCreateVirtualFolderDialog,
+      onStartRenameMode: () => setState(() {
+        _resetModes();
+        isRenameMode = true;
+      }),
+      onStartSortModeFolders: () => setState(() {
+        _resetModes();
+        isSortMode = true;
+      }),
+      onStartDeleteModeFolders: () => setState(() {
+        _resetModes();
+        isDeleteMode = true;
+        isSelectionMode = true;
+      }),
+      onCreateParentFolder: _showAddParentFolderDialog,
+    );
   }
 
   /*
@@ -712,6 +561,7 @@ class _MusicScannerState extends State<MusicScanner> {
   void _executeBulkAction() {
     if (isDeleteMode) {
       _executeBulkDelete();
+      _resetModes();
     } else if (isSortMode) {
       // 並び替えは ReorderableListView で即時反映されていることが多いですが、
       // ここで最終的な保存をかけると確実です。
@@ -720,11 +570,11 @@ class _MusicScannerState extends State<MusicScanner> {
     } else if (isRenameMode) {
       _resetModes();
     } else if (isCopyMode || isMoveMode) {
-      // 今後実装するコピー・移動の確定処理
-      // _executeBulkMove(); など
+      _executeBulkMove();
       _resetModes();
     } else if (isAssignMode) {
       _showBatchAssignmentDialog();
+      _resetModes();
     }
   }
 
@@ -796,7 +646,7 @@ class _MusicScannerState extends State<MusicScanner> {
   /*
     曲ファイルの移動・コピー用（自作まとめフォルダ内）関数
   */
-  void _showDestinationFolderSelector() {
+  void _executeBulkMove() {
     // 現在自分がいる「まとめ」の中にあるフォルダたちを候補にする（自分自身は除外）
     List<String> destinations = (parentFolderMap[currentParentName] ?? [])
         .where((id) => id != currentFolderName)
@@ -1484,19 +1334,6 @@ class _MusicScannerState extends State<MusicScanner> {
             ],
           ),
         ),
-        floatingActionButton:
-            (isSelectionMode &&
-                selectedSongPaths.isNotEmpty &&
-                (isCopyMode || isMoveMode))
-            ? FloatingActionButton.extended(
-                backgroundColor: isCopyMode
-                    ? Colors.blueAccent
-                    : Colors.orangeAccent,
-                onPressed: _showDestinationFolderSelector,
-                icon: Icon(isCopyMode ? Icons.copy : Icons.move_up),
-                label: Text(isCopyMode ? "コピー先を選択" : "移動先を選択"),
-              )
-            : null,
       ),
     );
   }
