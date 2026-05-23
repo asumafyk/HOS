@@ -128,19 +128,27 @@ class FolderDialogs {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("一括削除の確認"),
-        content: Text("選択された $count 個のアイテムを削除/除外しますか？"),
+        backgroundColor: AppTheme(context).exitBackground,
+        title: const Text(
+          "一括削除の確認",
+          style: TextStyle(fontSize: 17, color: Colors.white),
+        ),
+        content: Text(
+          "選択された $count 個のアイテムを削除/除外しますか？\n（元のファイルは削除されません）",
+          style: TextStyle(color: Colors.white70),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text("キャンセル"),
           ),
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () {
               Navigator.pop(context);
-              onConfirm();
+              onConfirm(); // 画面側の削除ロジックを叩く
             },
-            child: const Text("削除", style: TextStyle(color: Colors.red)),
+            child: const Text("削除実行", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -221,7 +229,12 @@ class FolderDialogs {
                 child: ListView(
                   shrinkWrap: true,
                   children: parentFolderMap.keys
-                      .where((key) => key != "All Songs" && key != "お気に入り・ピン留め" && key != FolderManager.virtualMasterKey)
+                      .where(
+                        (key) =>
+                            key != "All Songs" &&
+                            key != "お気に入り・ピン留め" &&
+                            key != FolderManager.virtualMasterKey,
+                      )
                       .map(
                         (target) => ListTile(
                           leading: const Icon(
@@ -315,6 +328,7 @@ class FolderDialogs {
             ElevatedButton(
               onPressed: () {
                 onFoldersAdded(localSelected);
+                Navigator.pop(context);
               },
               child: const Text("追加実行"),
             ),

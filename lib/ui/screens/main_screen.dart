@@ -50,28 +50,37 @@ class _MusicScannerState extends State<MusicScanner> {
     "All Songs": [], // ここには常に全フォルダが入る
     "好きな曲の入ったフォルダをまとめよう！": [], // 初期ガイド用フォルダ
   };
-  // 選択モードかどうか
-  bool isSelectionMode = false;
+
+  // --- 現在の操作モード（初期状態は通常時）---
+  OperationMode currentMode = OperationMode.none;
+  // 選択モード（チェックボックス表示するか）かどうか
+  bool get isSelectionMode =>
+      currentMode == OperationMode.copy ||
+      currentMode == OperationMode.move ||
+      currentMode == OperationMode.delete ||
+      currentMode == OperationMode.assign;
+  // 削除モードかどうか
+  bool get isDeleteMode => currentMode == OperationMode.delete;
+  // 並べ替えモード
+  bool get isSortMode => currentMode == OperationMode.sort;
+  // 名前変更モードかどうか
+  bool get isRenameMode => currentMode == OperationMode.rename;
+  // コピー作業中かどうか
+  bool get isCopyMode => currentMode == OperationMode.copy;
+  // ファイル移動作業中かどうか
+  bool get isMoveMode => currentMode == OperationMode.move;
+  // 仕分けモードかどうか（AllSongs内にて）
+  bool get isAssignMode => currentMode == OperationMode.assign;
+
+  // ヘッダーが開いているかどうか
+  bool isHeaderOpen = false;
+
+  // まとめ一覧の並び順のリスト
+  List<String> parentFolderOrder = [];
   // チェックを入れたフォルダ名のセット
   Set<String> selectedFolders = {};
   // チェックを入れた曲ファイルのセット
   Set<String> selectedSongPaths = {};
-  // 削除モードかどうか
-  bool isDeleteMode = false;
-  // 並べ替えモード
-  bool isSortMode = false;
-  // 並び順のリスト
-  List<String> parentFolderOrder = [];
-  // 名前変更モードかどうか
-  bool isRenameMode = false;
-  // コピー作業中かどうか
-  bool isCopyMode = false;
-  // ファイル移動作業中かどうか
-  bool isMoveMode = false;
-  // 仕分けモードかどうか（AllSongs内にて）
-  bool isAssignMode = false;
-  // ヘッダーが開いているかどうか
-  bool isHeaderOpen = false;
 
   // アプリ内でのフォルダの仮想名（名前変更に対応）
   Map<String, String> folderNicknames = {}; // {"物理名": "仮想名"}
@@ -341,38 +350,33 @@ class _MusicScannerState extends State<MusicScanner> {
       onAddSongsFromAllSongs: () {}, // TODO: 仮想フォルダ内にてAllSongsからの曲を追加
       onStartCopyMode: () => setState(() {
         _resetModes();
-        isSelectionMode = true;
-        isCopyMode = true;
+        currentMode = OperationMode.copy;
       }),
       onStartMoveMode: () => setState(() {
         _resetModes();
-        isSelectionMode = true;
-        isMoveMode = true;
+        currentMode = OperationMode.move;
       }),
       onStartDeleteModeSongs: () => setState(() {
         _resetModes();
-        isDeleteMode = true;
-        isSelectionMode = true;
+        currentMode = OperationMode.delete;
       }),
       onStartAssignMode: () => setState(() {
         _resetModes();
-        isSelectionMode = true;
-        isAssignMode = true;
+        currentMode = OperationMode.assign;
       }),
       onAddFoldersToSummary: _showAddFoldersToSummaryDialog,
       onCreateVirtualFolder: _showCreateVirtualFolderDialog,
       onStartRenameMode: () => setState(() {
         _resetModes();
-        isRenameMode = true;
+        currentMode = OperationMode.rename;
       }),
       onStartSortModeFolders: () => setState(() {
         _resetModes();
-        isSortMode = true;
+        currentMode = OperationMode.sort;
       }),
       onStartDeleteModeFolders: () => setState(() {
         _resetModes();
-        isDeleteMode = true;
-        isSelectionMode = true;
+        currentMode = OperationMode.delete;
       }),
       onCreateParentFolder: _showAddParentFolderDialog,
     );
@@ -383,14 +387,8 @@ class _MusicScannerState extends State<MusicScanner> {
   */
   void _resetModes() {
     setState(() {
-      isDeleteMode = false;
-      isSortMode = false;
-      isRenameMode = false;
+      currentMode = OperationMode.none;
       isHeaderOpen = false;
-      isCopyMode = false;
-      isMoveMode = false;
-      isSelectionMode = false;
-      isAssignMode = false;
       selectedSongPaths.clear();
       selectedFolders.clear();
     });
@@ -446,19 +444,7 @@ class _MusicScannerState extends State<MusicScanner> {
 
   /*
     All Songs 内にて選択した各フォルダに対して
-    「移動先を選択」する処理用の関数
-  */
-  void _showBatchAssignmentDialog() {
-    FolderDialogs.showAssignSelectorDialog(
-      context: context,
-      parentFolderMap: parentFolderMap,
-      onTargetSelected: _executeAssign,
-      onCreateAndAssign: _executeAssign,
-    );
-  }
-
-  /*
-    上記に対する実際の書き込み処理
+    「移動先を選択」したものを処理・実行する関数
   */
   void _executeAssign(String targetParent) {
     setState(() {
@@ -556,66 +542,44 @@ class _MusicScannerState extends State<MusicScanner> {
   }
 
   /*
-    画面下部の確定（実行）ボタンの、各モードに応じた処理関数
+    画面下部の確定（実行）ボタンの、各モードに応じた処理の司令塔関数
   */
   void _executeBulkAction() {
-    if (isDeleteMode) {
-      _executeBulkDelete();
-      _resetModes();
-    } else if (isSortMode) {
-      // 並び替えは ReorderableListView で即時反映されていることが多いですが、
-      // ここで最終的な保存をかけると確実です。
-      _saveAllSettings();
-      _resetModes();
-    } else if (isRenameMode) {
-      _resetModes();
-    } else if (isCopyMode || isMoveMode) {
-      _executeBulkMove();
-      _resetModes();
-    } else if (isAssignMode) {
-      _showBatchAssignmentDialog();
-      _resetModes();
-    }
-  }
+    switch (currentMode) {
+      case OperationMode.delete:
+        // 削除の時だけ、その場で確認ダイアログを開く
+        FolderDialogs.showBatchDeleteConfirm(
+          context: context,
+          count: selectedFolders.length + selectedSongPaths.length,
+          onConfirm: _executeBulkDelete, // 確定したら実行ロジックへ
+        );
+        break;
 
-  /*
-    削除の確認用関数
-  */
-  void _confirmBulkAction() {
-    // 削除モードの時だけ確認ダイアログを出す
-    if (isDeleteMode) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: AppTheme(context).exitBackground,
-          title: const Text("一括削除の確認", style: TextStyle(fontSize: 17)),
-          content: Text(
-            "${selectedFolders.length + selectedSongPaths.length} 件のアイテムを除外しますか？\n（元のファイルは削除されません）",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("キャンセル"),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-              ),
-              onPressed: () {
-                Navigator.pop(context);
-                _executeBulkDelete(); // 実際の削除ロジックへ
-              },
-              child: const Text(
-                "削除実行",
-                style: TextStyle(color: Colors.orangeAccent),
-              ),
-            ),
-          ],
-        ),
-      );
-    } else {
-      // 削除以外（移動・コピー等）ならそのまま実行
-      _executeBulkAction();
+      case OperationMode.sort:
+        _saveAllSettings();
+        _resetModes();
+        break;
+
+      case OperationMode.rename:
+        _resetModes();
+        break;
+
+      case OperationMode.copy:
+      case OperationMode.move:
+        _executeBulkMove();
+        break;
+
+      case OperationMode.assign:
+        FolderDialogs.showAssignSelectorDialog(
+          context: context,
+          parentFolderMap: parentFolderMap,
+          onTargetSelected: _executeAssign,
+          onCreateAndAssign: _executeAssign,
+        );
+        break;
+
+      case OperationMode.none:
+        break;
     }
   }
 
@@ -990,14 +954,6 @@ class _MusicScannerState extends State<MusicScanner> {
 
   @override // 画面の見た目の処理
   Widget build(BuildContext context) {
-    // --- 現在どのモードか特定する ---
-    bool isAnyMode =
-        isDeleteMode ||
-        isSortMode ||
-        isRenameMode ||
-        isCopyMode ||
-        isMoveMode ||
-        isSelectionMode;
     String currentModeName = "";
     String currentActionLabel = "";
     if (isDeleteMode) {
@@ -1029,7 +985,7 @@ class _MusicScannerState extends State<MusicScanner> {
         if (_scaffoldKey.currentState?.isDrawerOpen ?? false) return;
 
         // モード中なら、戻るボタンの代わりにモードをリセットする
-        if (isAnyMode) {
+        if (currentMode != OperationMode.none) {
           _resetModes();
         }
         // もし下位フォルダまたは、上位フォルダの中にいるなら
@@ -1315,7 +1271,7 @@ class _MusicScannerState extends State<MusicScanner> {
                     ),
 
                     // 下から出てくるメニュー
-                    if (isAnyMode)
+                    if (currentMode != OperationMode.none)
                       Positioned(
                         bottom: 0,
                         left: 0,
@@ -1324,7 +1280,7 @@ class _MusicScannerState extends State<MusicScanner> {
                           count: selectedCount,
                           modeName: currentModeName,
                           actionLabel: currentActionLabel,
-                          onExecute: _confirmBulkAction, // 各モードに応じた一括処理関数へ
+                          onExecute: _executeBulkAction, // 各モードに応じた一括処理関数へ
                           onCancel: _resetModes,
                         ),
                       ),
