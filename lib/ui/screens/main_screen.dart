@@ -1090,11 +1090,11 @@ class _MusicScannerState extends State<MusicScanner> {
                                       []) // 既にAll Songs は物理のみなのでフィルタ不要
                                 : displayedSongs),
                       // --- 状態の受け渡し ---
-                      playingId: (currentFolderName != null)
-                          ? selectSong?.data
-                          : (currentParentName == null
-                                ? playingParentName
-                                : playingFolderName),
+                      playingId: selectSong?.data,            // 再生中の曲の絶対パス
+                      playingFolderName: playingFolderName,   // 再生中のフォルダID
+                      playingParentName: playingParentName,   // 再生中のまとめフォルダ名
+                      currentParentName: currentParentName,   // 現在表示中のまとめフォルダ名
+                      currentFolderName: currentFolderName,   // 現在表示中のフォルダID
                       selectedIds: currentFolderName == null
                           ? selectedFolders
                           : selectedSongPaths,

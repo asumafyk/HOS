@@ -11,6 +11,10 @@ class MainContentList extends StatelessWidget {
   final ViewLevel level;
   final List<dynamic> items; // String(ID) または SongModel
   final String? playingId;
+  final String? playingFolderName;
+  final String? playingParentName;
+  final String? currentParentName;
+  final String? currentFolderName;
   final Set<String> selectedIds;
   final bool isSelectionMode;
   final bool isSortMode;
@@ -32,6 +36,10 @@ class MainContentList extends StatelessWidget {
     required this.level,
     required this.items,
     this.playingId,
+    this.playingFolderName,
+    this.playingParentName,
+    this.currentParentName,
+    this.currentFolderName,
     required this.selectedIds,
     required this.isSelectionMode,
     required this.isSortMode,
@@ -74,13 +82,31 @@ class MainContentList extends StatelessWidget {
             nicknames[id] ?? ((item is SongModel) ? item.displayNameWOExt : id);
         if (displayName.startsWith("VIRTUAL_")) displayName = "名称未設定フォルダ";
 
+        // 再生中ハイライト判定ロジック
+        bool isCurrentItemPlaying = false;
+        if (level == ViewLevel.song) {
+          // 曲一覧を表示している時は「まとめ名」「フォルダ名」「曲パス」がすべて一致したときのみ再生中とみなす
+          isCurrentItemPlaying =
+              (playingId == id) &&
+              (playingFolderName == currentFolderName) &&
+              (playingParentName == currentParentName);
+        } else if (level == ViewLevel.sub) {
+          // 中位フォルダ一覧の時は「まとめ名」と「フォルダ名」が一致したときのみ
+          isCurrentItemPlaying =
+              (playingFolderName == id) &&
+              (playingParentName == currentParentName);
+        } else {
+          // 最上位まとめ一覧の時は「まとめ名」が一致したときのみ
+          isCurrentItemPlaying = (playingParentName == id);
+        }
+
         return MusicTile(
           key: ValueKey("${level.name}_$id"), // レベルとIDを組み合わせて一意にする
           level: level, // 階層
           id: id, // まとめフォルダ・フォルダ・曲ファイル名
           index: index, // 並び順
           song: (item is SongModel) ? item : null,
-          isPlaying: playingId == id,
+          isPlaying: isCurrentItemPlaying, // 再生中であるか否か
           isChecked: selectedIds.contains(id),
           isSelectionMode: isSelectionMode,
           isSortMode: isSortMode,

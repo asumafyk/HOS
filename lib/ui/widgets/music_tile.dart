@@ -149,11 +149,23 @@ class MusicTile extends StatelessWidget {
         ),
       );
     }
+
     // フォルダ階層（親・物理）の場合はアイコンを表示
-    IconData icon = (id == "⭐ お気に入り") ? Icons.star_sharp : Icons.folder;
-    Color color = (id == "⭐ お気に入り"
-        ? Colors.yellow
-        : Colors.amber.withValues(alpha: 0.8));
+    IconData icon;
+    Color color;
+    if (id == "お気に入り・ピン留め") {
+      icon = Icons.folder_special;
+      color = Colors.orangeAccent.withValues(alpha: 0.9);
+    } else if (id == "All Songs") {
+      icon = Icons.folder_shared;
+      color = Colors.amber;
+    } else if (id == "⭐ お気に入り") {
+      icon = Icons.star_sharp;
+      color = Colors.yellow;
+    } else {
+      icon = Icons.folder;
+      color = Colors.amber.withValues(alpha: 0.8);
+    }
     return Icon(icon, color: color, size: 35);
   }
 
@@ -188,6 +200,10 @@ class MusicTile extends StatelessWidget {
     }
     // 通常時かつフォルダ階層でのピン（お気に入り）ボタン
     if (level == ViewLevel.sub) {
+      if (id.startsWith("VIRTUAL_")) {
+        // 仮想フォルダの場合は何も表示せず右矢印のみ
+        return const Icon(Icons.chevron_right, color: Colors.white24);
+      }
       return IconButton(
         visualDensity: VisualDensity.compact,
         icon: Icon(
