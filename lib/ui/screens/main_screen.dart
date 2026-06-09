@@ -224,7 +224,7 @@ class _MusicScannerState extends State<MusicScanner> {
     );
 
     // 保存が完了したら、連動してメモリ側の地図を最新にする
-    _scanManager.rebuildFolderStructures();
+    _scanManager.rebuildFolderStructures(musicFiles);
   }
 
   /* 
@@ -466,13 +466,16 @@ class _MusicScannerState extends State<MusicScanner> {
     まとめフォルダ内に、空のフォルダを作成する関数
   */
   void _showCreateVirtualFolderDialog() {
+    // 今開いているまとめフォルダに登録されているフォルダIDのリストを取得
+    final currentSubFolders = parentFolderMap[currentParentName] ?? [];
+
     FolderDialogs.showCreateFolderDialog(
       context: context,
       title: "空フォルダの作成",
       hintText: "フォルダ名を入力してください",
       // バリデーション：全フォルダのニックネームと被っていないか
       onValidate: (name) =>
-          !folderMap.keys.any((k) => (folderNicknames[k] ?? k) == name),
+          !currentSubFolders.any((k) => (folderNicknames[k] ?? k) == name),
       onConfirm: (name) {
         setState(() {
           // 実体リスト(folderaMap)に空のリストとして登録
@@ -519,6 +522,8 @@ class _MusicScannerState extends State<MusicScanner> {
   void _showRenamePhysicalFolderDialog(String id) {
     // 現在のニックネーム、無ければ物理名を初期値にする
     String oldName = folderNicknames[id] ?? id;
+    // 今開いているまとめフォルダに登録されているフォルダIDのリストを取得
+    final currentSubFolders = parentFolderMap[currentParentName] ?? [];
 
     FolderDialogs.showCreateFolderDialog(
       context: context,
@@ -528,7 +533,7 @@ class _MusicScannerState extends State<MusicScanner> {
       // バリデーション：他のフォルダ名と被っていないか
       onValidate: (name) =>
           name == oldName ||
-          !folderMap.keys.any(
+          !currentSubFolders.any(
             (k) => k != id && (folderNicknames[k] ?? k) == name,
           ),
       onConfirm: (name) {
@@ -586,7 +591,11 @@ class _MusicScannerState extends State<MusicScanner> {
   /*
     全階層での一括削除（除外）を実行する関数
   */
-  void _executeBulkDelete() {
+  void _executeBulkDelete() async {
+    // 判定用：仮想フォルダの中で、曲を一括除外しようとしているか
+    bool isVirtualFolderSongDeletion =
+        currentFolderName != null && currentFolderName!.startsWith("VIRTUAL_");
+
     setState(() {
       FolderManager.executeBulkDelete(
         // 現在の階層に応じて、選択されているIDセットを渡す
@@ -601,10 +610,85 @@ class _MusicScannerState extends State<MusicScanner> {
         parentFolderOrder: parentFolderOrder,
         virtualFolderPaths: virtualFolderPaths,
       );
-      // モード解除と選択解除
+    });
+    // 【仕様変更】手動で曲を外した結果、仮想フォルダが空になった場合の確認ポップアップ
+    if (isVirtualFolderSongDeletion) {
+      final songsInCurrentFolder = folderMap[currentFolderName] ?? [];
+
+      if (songsInCurrentFolder.isEmpty) {
+        // 画面に非同期でダイアログを展開し、ユーザーの選択（bool）を待つ
+        bool shouldDeleteFolder =
+            await showDialog<bool>(
+              context: context,
+              barrierDismissible: false, // 必ずどちらかのボタンを押させる
+              builder: (context) => AlertDialog(
+                backgroundColor: AppTheme(context).exitBackground,
+                title: const Row(
+                  children: [
+                    Icon(
+                      Icons.folder_delete_rounded,
+                      color: Colors.orangeAccent,
+                    ),
+                    SizedBox(width: 8),
+                    Text("空フォルダの確認", style: TextStyle(fontSize: 17)),
+                  ],
+                ),
+                content: const Text(
+                  "フォルダ内の曲がすべてなくなりました。\nこの仮想フォルダ自体も一緒に削除しますか？",
+                  style: TextStyle(fontSize: 14),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () =>
+                        Navigator.pop(context, false), // フォルダを残す（false）
+                    child: const Text(
+                      "残す",
+                      style: TextStyle(color: Colors.lightBlueAccent),
+                    ),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                    ),
+                    onPressed: () =>
+                        Navigator.pop(context, true), // フォルダも消す（true）
+                    child: const Text(
+                      "削除する",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+
+        if (shouldDeleteFolder) {
+          // ユーザーが「削除する」を選んだ場合、フォルダ情報の完全抹消を行う
+          setState(() {
+            String targetId = currentFolderName!;
+            folderMap.remove(targetId);
+            virtualFolderPaths.remove(targetId);
+            folderNicknames.remove(targetId);
+            favoriteFolders.remove(targetId);
+            parentFolderMap[currentParentName]?.remove(targetId);
+
+            // フォルダが消滅したため、一階層上のフォルダ一覧画面へ強制退避
+            currentFolderName = null;
+            displayedSongs = [];
+            isHeaderOpen = false;
+          });
+          debugPrint("HOS: ユーザーの選択により、空になった仮想フォルダを削除しました。");
+        } else {
+          debugPrint("HOS: ユーザーの選択により、空の仮想フォルダをそのまま維持します。");
+        }
+      }
+    }
+
+    // 状態をリセットし、最新の地図構造をストレージに永続化保存
+    setState(() {
       _resetModes();
     });
-    _saveAllSettings();
+    await _saveAllSettings();
   }
 
   /*
@@ -1090,11 +1174,11 @@ class _MusicScannerState extends State<MusicScanner> {
                                       []) // 既にAll Songs は物理のみなのでフィルタ不要
                                 : displayedSongs),
                       // --- 状態の受け渡し ---
-                      playingId: selectSong?.data,            // 再生中の曲の絶対パス
-                      playingFolderName: playingFolderName,   // 再生中のフォルダID
-                      playingParentName: playingParentName,   // 再生中のまとめフォルダ名
-                      currentParentName: currentParentName,   // 現在表示中のまとめフォルダ名
-                      currentFolderName: currentFolderName,   // 現在表示中のフォルダID
+                      playingId: selectSong?.data, // 再生中の曲の絶対パス
+                      playingFolderName: playingFolderName, // 再生中のフォルダID
+                      playingParentName: playingParentName, // 再生中のまとめフォルダ名
+                      currentParentName: currentParentName, // 現在表示中のまとめフォルダ名
+                      currentFolderName: currentFolderName, // 現在表示中のフォルダID
                       selectedIds: currentFolderName == null
                           ? selectedFolders
                           : selectedSongPaths,
